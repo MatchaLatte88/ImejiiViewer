@@ -94,8 +94,8 @@ const isComparing = computed(() =>
         </svg>
       </span>
       <div class="header__title">
-        <h1>Logo Creator</h1>
-        <p>Icons &amp; logos from images</p>
+        <h1>Imejii</h1>
+        <p>View, edit and convert images</p>
       </div>
     </div>
 

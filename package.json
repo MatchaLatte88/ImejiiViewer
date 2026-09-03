@@ -1,9 +1,9 @@
 {
-  "name": "logo-creator",
+  "name": "imejii",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Browser-basiertes Studio, um aus Bildern transparente Logos und Icon-Sets zu erzeugen.",
+  "description": "Bildbetrachter mit Werkzeugkasten: ansehen, bearbeiten, konvertieren und freistellen - alles lokal.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

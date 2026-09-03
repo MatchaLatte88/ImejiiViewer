@@ -1,8 +1,20 @@
-# Logo Creator
+# Imejii
 
-Vue-3-Web-App mit zwei Arbeitsbereichen: **Logo** stellt Bilder frei und erzeugt komplette
-Icon-Sets, **Images** ist ein Betrachter, Editor und Stapel-Konverter für ganze Bildserien.
-Die gesamte Verarbeitung läuft im Browser – es wird nichts hochgeladen.
+Bildbetrachter mit Werkzeugkasten. **Betrachter** zeigt ein Bild und blättert durch seinen
+Ordner, **Images** ist Editor und Stapel-Konverter für ganze Bildserien, **Logo** stellt Bilder
+frei und erzeugt komplette Icon-Sets. Die App läuft im Browser oder als Desktop-Programm,
+die Verarbeitung passiert lokal – es wird nichts hochgeladen.
+
+## Betrachter
+
+Der Startbildschirm ist ein reiner Betrachter – ein Bild, sonst nichts.
+
+- `←` `→` blättern durch den Ordner des geöffneten Bildes (Desktop-Variante). Nachbarbilder
+  werden erst beim Anzeigen gelesen, der Speicher wächst beim Durchblättern also nicht mit.
+- Vollbild per `F` oder Doppelklick: nur das Bild, Statusleiste und Pfeile ziehen sich nach
+  kurzer Ruhe zurück und kommen bei jeder Mausbewegung wieder.
+- Zoom und Verschieben, Diashow mit einstellbarem Intervall, `Entf` schließt das Bild.
+- Ein Klick führt weiter in den Bild-Modus (bearbeiten) oder den Logo-Modus (freistellen).
 
 ## Logo-Modus
 

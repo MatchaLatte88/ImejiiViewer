@@ -1,9 +1,9 @@
 @echo off
-title Logo Creator (Desktop)
+title Imejii (Desktop)
 cd /d "%~dp0"
 
 echo.
-echo   Logo Creator wird als Desktop-App gestartet ...
+echo   Imejii wird als Desktop-App gestartet ...
 echo.
 
 where node >nul 2>nul

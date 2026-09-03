@@ -204,12 +204,12 @@ function buildMenu() {
       label: '&Help',
       submenu: [
         {
-          label: 'About Logo Creator',
+          label: 'About Imejii',
           click: () => {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
-              title: 'Logo Creator',
-              message: 'Logo Creator ' + app.getVersion(),
+              title: 'Imejii',
+              message: 'Imejii ' + app.getVersion(),
               detail:
                 'Cut out logos, build icon sets, view and convert images.\n' +
                 'Electron ' + process.versions.electron + ' - Chromium ' + process.versions.chrome,

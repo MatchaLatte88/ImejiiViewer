@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue'
 
-const STORAGE_KEY = 'logo-creator:theme'
+const STORAGE_KEY = 'imejii:theme'
 
 function initialTheme() {
   const current = document.documentElement.dataset.theme

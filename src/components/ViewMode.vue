@@ -42,7 +42,7 @@ onMounted(() => {
         <div class="empty__icon"><AppIcon name="image" :size="28" /></div>
         <h2>Drop an image here</h2>
         <p class="empty__lead">
-          Logo Creator opens as a plain viewer. Editing, converting and icon sets are one click
+          Imejii opens as a plain viewer. Editing, converting and icon sets are one click
           away - everything stays on your machine.
         </p>
 
@@ -50,7 +50,7 @@ onMounted(() => {
           <AppButton icon="folder" variant="primary" :disabled="store.isImporting" @click="emit('open-files')">
             {{ store.isImporting ? 'Reading files ...' : 'Choose images' }}
           </AppButton>
-          <span class="empty__or">or set Logo Creator as your default image viewer</span>
+          <span class="empty__or">or set Imejii as your default image viewer</span>
         </div>
 
         <ul class="empty__formats">

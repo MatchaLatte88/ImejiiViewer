@@ -14,11 +14,13 @@ const PREVIEW_MAX_SIZE = 1280
 const PREVIEW_MIN_SIZE = 560
 
 const HISTORY_LIMIT = 50
-const PRESET_STORAGE_KEY = 'logo-creator:presets'
+const PRESET_STORAGE_KEY = 'imejii:presets'
+// Presets aus der Zeit vor der Umbenennung sollen nicht verloren gehen.
+const LEGACY_PRESET_KEY = 'logo-creator:presets'
 
 function loadStoredPresets() {
   try {
-    const raw = localStorage.getItem(PRESET_STORAGE_KEY)
+    const raw = localStorage.getItem(PRESET_STORAGE_KEY) ?? localStorage.getItem(LEGACY_PRESET_KEY)
     const parsed = raw ? JSON.parse(raw) : []
     return Array.isArray(parsed) ? parsed : []
   } catch {

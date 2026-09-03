@@ -1,9 +1,9 @@
 @echo off
-title Logo Creator
+title Imejii
 cd /d "%~dp0"
 
 echo.
-echo   Logo Creator wird gestartet ...
+echo   Imejii wird gestartet ...
 echo.
 
 where node >nul 2>nul
