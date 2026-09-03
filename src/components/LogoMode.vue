@@ -31,26 +31,22 @@ const activePanel = computed(
 )
 
 function isTypingTarget(target) {
-  return target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')
+  return target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
 }
 
 function onKeyDown(event) {
   // Auf dem Desktop laufen Strg-Kuerzel ueber das Anwendungsmenue.
-  const meta = !isDesktop && (event.ctrlKey || event.metaKey)
+  const meta = event.ctrlKey || event.metaKey
+  if (isTypingTarget(event.target)) return
 
-  if (meta && event.key.toLowerCase() === 'z') {
+  if (!isDesktop && meta && event.key.toLowerCase() === 'z') {
     event.preventDefault()
     if (event.shiftKey) store.redo()
     else store.undo()
     return
   }
-  if (meta && event.key.toLowerCase() === 's') {
-    event.preventDefault()
-    if (store.hasImage) store.exportSingle({ format: 'png' })
-    return
-  }
 
-  if (isTypingTarget(event.target)) return
+  if (meta || event.altKey || store.isLoading) return
 
   if (event.key === 'Escape') {
     store.eyedropperMode = null
@@ -70,12 +66,16 @@ function onKeyUp(event) {
   if (event.code === 'Space') store.showOriginal = false
 }
 
+const onBlur = () => { store.showOriginal = false }
 onMounted(() => {
+  window.addEventListener('blur', onBlur)
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
 })
 
 onBeforeUnmount(() => {
+  onBlur()
+  window.removeEventListener('blur', onBlur)
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('keyup', onKeyUp)
 })
@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
       </button>
     </nav>
 
-    <section v-if="store.hasImage" class="sidebar">
+    <section v-if="store.hasImage" class="sidebar" :inert="store.isLoading">
       <component :is="activePanel" />
     </section>
 

@@ -1,3 +1,5 @@
+import { resolveImageFile } from './desktop.js'
+import { checkImageFile, checkDimensions } from './imageLimits.js'
 import { rgbToHex } from './color.js'
 
 /** Formate, die als Eingabe akzeptiert werden. */
@@ -41,11 +43,14 @@ export function isSupportedFile(file) {
 export function decodeViaImageElement(url) {
   return new Promise((resolve, reject) => {
     const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () =>
+    const timeout = setTimeout(() => { img.src = ''; reject(new Error('Image decoding timed out.')) }, 30000)
+    img.onload = () => { clearTimeout(timeout); resolve(img) }
+    img.onerror = () => {
+      clearTimeout(timeout)
       reject(
         new Error('The image could not be decoded. The format is most likely unsupported.'),
       )
+    }
     img.src = url
   })
 }
@@ -59,6 +64,8 @@ export async function loadImageFile(file) {
     throw new Error('Unsupported format: ' + (file && file.name ? file.name : 'unknown'))
   }
 
+  file = await resolveImageFile(file)
+  await checkImageFile(file)
   const url = URL.createObjectURL(file)
   try {
     const img = await decodeViaImageElement(url)
@@ -72,6 +79,7 @@ export async function loadImageFile(file) {
       naturalHeight = SVG_FALLBACK_SIZE
     }
 
+    checkDimensions(naturalWidth, naturalHeight)
     let width = naturalWidth
     let height = naturalHeight
     let scaled = false

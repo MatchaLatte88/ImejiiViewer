@@ -53,6 +53,7 @@ function reset() {
       <button
         type="button"
         class="slider__label"
+        :disabled="disabled"
         :title="hint || 'Double-click to reset'"
         @dblclick="reset"
       >
@@ -62,6 +63,7 @@ function reset() {
         <input
           class="slider__number"
           type="number"
+          :aria-label="label + (unit ? ' (' + unit + ')' : '')"
           :value="modelValue"
           :min="min"
           :max="max"

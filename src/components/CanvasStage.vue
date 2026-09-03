@@ -149,16 +149,18 @@ function onCanvasMove(event) {
   }
   const point = toImageCoords(event)
   if (!point) return
-  const { data, width } = store.source.imageData
-  const index = (Math.round(point.y) * width + Math.round(point.x)) * 4
+  const { data, width, height } = store.source.imageData
+  const x = Math.max(0, Math.min(width - 1, Math.floor(point.x)))
+  const y = Math.max(0, Math.min(height - 1, Math.floor(point.y)))
+  const index = (y * width + x) * 4
   hoverColor.value = {
     hex:
       '#' +
       [data[index], data[index + 1], data[index + 2]]
         .map((v) => v.toString(16).padStart(2, '0'))
         .join(''),
-    x: Math.round(point.x),
-    y: Math.round(point.y),
+    x,
+    y,
   }
 }
 

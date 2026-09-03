@@ -3,7 +3,7 @@ import { useLibraryStore } from '../stores/library.js'
 import { isDesktop } from '../lib/desktop.js'
 
 function isTypingTarget(target) {
-  return target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')
+  return target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
 }
 
 /**
@@ -17,9 +17,10 @@ export function usePhotoShortcuts(viewerRef, { editing = false } = {}) {
 
   function onKeyDown(event) {
     // Auf dem Desktop laufen Strg-Kuerzel ueber das Anwendungsmenue.
-    const meta = !isDesktop && (event.ctrlKey || event.metaKey)
+    const meta = event.ctrlKey || event.metaKey
+    if (isTypingTarget(event.target)) return
 
-    if (editing && meta && event.key.toLowerCase() === 'z') {
+    if (editing && !isDesktop && meta && event.key.toLowerCase() === 'z') {
       event.preventDefault()
       if (event.shiftKey) store.redo()
       else store.undo()
@@ -27,7 +28,7 @@ export function usePhotoShortcuts(viewerRef, { editing = false } = {}) {
     }
 
     if (isTypingTarget(event.target)) return
-    if (meta) return
+    if (meta || event.altKey || store.isDecoding) return
 
     switch (event.key) {
       case 'ArrowRight':
@@ -73,12 +74,16 @@ export function usePhotoShortcuts(viewerRef, { editing = false } = {}) {
     if (editing && event.code === 'Space') store.showOriginal = false
   }
 
+  const onBlur = () => { store.showOriginal = false }
   onMounted(() => {
+    window.addEventListener('blur', onBlur)
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
   })
 
   onBeforeUnmount(() => {
+    onBlur()
+    window.removeEventListener('blur', onBlur)
     window.removeEventListener('keydown', onKeyDown)
     window.removeEventListener('keyup', onKeyUp)
   })

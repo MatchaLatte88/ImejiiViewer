@@ -1,0 +1,25 @@
+{
+  "harness": "mocked main-process boundaries; real source unchanged",
+  "results": [
+    {
+      "name": "IPC rejects an untrusted sender and arbitrary non-image read",
+      "status": "FAIL",
+      "detail": "files:read passed an untrusted arbitrary .txt path to fs.readFile\n\n1 !== 0\n"
+    },
+    {
+      "name": "IPC confines output names to the selected folder",
+      "status": "FAIL",
+      "detail": "writeInto accepted traversal: D:\\escaped.txt\n\n1 !== 0\n"
+    },
+    {
+      "name": "Folder writes request exclusive creation / overwrite protection",
+      "status": "FAIL",
+      "detail": "fs.writeFile is called without exclusive creation; existing files are truncated\n\nundefined !== 'wx'\n"
+    },
+    {
+      "name": "Production navigation rejects another file URL",
+      "status": "FAIL",
+      "detail": "both file: origins are null, so the navigation guard permits a different local document\n\nfalse !== true\n"
+    }
+  ]
+}

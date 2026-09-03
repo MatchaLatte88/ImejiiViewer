@@ -5,7 +5,7 @@ import { useEditorStore } from './stores/editor.js'
 import { useLibraryStore } from './stores/library.js'
 import { useTheme } from './composables/useTheme.js'
 import { ACCEPTED_EXTENSIONS, isSupportedFile } from './lib/imageLoader.js'
-import { getStartupFiles, isDesktop, onFilesOpened, onMenuAction, pickImages } from './lib/desktop.js'
+import { adoptFiles, getStartupFiles, isDesktop, onFilesOpened, onMenuAction, pickImages } from './lib/desktop.js'
 import AppHeader from './components/AppHeader.vue'
 import LogoMode from './components/LogoMode.vue'
 import ImageMode from './components/ImageMode.vue'
@@ -36,8 +36,11 @@ async function openFileDialog() {
     return
   }
   try {
-    const files = await pickImages({ multiple: usesLibrary.value })
-    if (files) await handleFiles(files)
+    const result = await pickImages({ multiple: usesLibrary.value })
+    if (result) {
+      await handleFiles(result.files)
+      if (result.error) ui.setNotice('error', 'Some files could not be opened: ' + result.error, 10000)
+    }
   } catch (error) {
     ui.setNotice('error', 'Could not open the file: ' + error.message, 7000)
   }
@@ -45,25 +48,30 @@ async function openFileDialog() {
 
 /** Dateien landen je nach Modus im Logo-Editor oder in der Bildbibliothek. */
 async function handleFiles(files) {
-  const supported = Array.from(files || []).filter(isSupportedFile)
+  const targetMode = ui.mode
+  const adopted = await adoptFiles(Array.from(files || []))
+  const supported = adopted.files.filter(isSupportedFile)
   if (!supported.length) {
     ui.setNotice('error', 'No supported image format found.')
     return
   }
 
-  if (usesLibrary.value) {
-    return library.addFiles(supported)
+  if (targetMode !== 'logo') {
+    const ids = await library.addFiles(supported)
+    if (adopted.error) ui.setNotice('error', adopted.error, 10000)
+    return ids
   }
 
   try {
     await editor.loadFile(supported[0])
+    if (adopted.error) ui.setNotice('error', adopted.error, 10000)
   } catch {
     // The error message already comes from the store.
   }
 }
 
 function onFileInput(event) {
-  handleFiles(event.target.files)
+  void handleFiles(event.target.files).catch(reportError)
   event.target.value = ''
 }
 
@@ -87,7 +95,7 @@ function onDrop(event) {
   event.preventDefault()
   dragDepth = 0
   isDragging.value = false
-  handleFiles(event.dataTransfer?.files)
+  void handleFiles(event.dataTransfer?.files).catch(reportError)
 }
 
 function onPaste(event) {
@@ -95,12 +103,16 @@ function onPaste(event) {
     .filter((entry) => entry.kind === 'file' && entry.type.startsWith('image/'))
     .map((entry) => entry.getAsFile())
     .filter(Boolean)
-  if (files.length) handleFiles(files)
+  if (files.length) { event.preventDefault(); void handleFiles(files).catch(reportError) }
 }
 
 function onKeyDown(event) {
   // Im Desktop bedient das Anwendungsmenue diese Kuerzel.
   if (isDesktop) return
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault()
+    void saveCurrent().catch(reportError)
+  }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'o') {
     event.preventDefault()
     openFileDialog()
@@ -110,25 +122,29 @@ function onKeyDown(event) {
 // --- Moduswechsel -------------------------------------------------------
 // Welches Bild zuletzt in den Logo-Editor gewandert ist. So geht eine begonnene
 // Logo-Bearbeitung beim Hin- und Herwechseln nicht verloren.
-let handedOver = null
+let modeVersion = 0
 
 /**
  * Der Logo-Editor arbeitet an einem einzelnen Bild und hat keine Bibliothek -
  * wer aus dem Betrachter kommt, nimmt das sichtbare Bild also mit.
  */
 async function setMode(next) {
+  const version = ++modeVersion
   const item = usesLibrary.value ? library.activeItem : null
-  ui.setMode(next)
-
-  if (next !== 'logo' || !item) return
-  if (handedOver === item.file && editor.hasImage) return
-
-  handedOver = item.file
-  try {
-    await editor.loadFile(item.file)
-  } catch {
-    // The error message already comes from the store.
+  if (next === 'logo' && item && editor.sourceFile !== item.file) {
+    try {
+      const loaded = await editor.loadFile(item.file)
+      if (!loaded || version !== modeVersion) return
+    } catch { return }
   }
+  if (version === modeVersion) ui.setMode(next)
+}
+
+function reportError(error) { ui.setNotice('error', error.message || String(error), 8000) }
+function onBeforeUnload(event) {
+  if (!library.hasPendingWork && !editor.hasPendingWork) return
+  event.preventDefault()
+  event.returnValue = ''
 }
 
 // --- Menuebefehle aus dem Hauptprozess ----------------------------------
@@ -140,13 +156,19 @@ async function saveCurrent() {
   }
 }
 
-function handleMenuAction(action) {
+async function handleMenuAction(action) {
+  const target = document.activeElement
+  if (['undo', 'redo'].includes(action) && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName) || target?.isContentEditable)) {
+    document.execCommand(action)
+    return
+  }
+  try {
   switch (action) {
     case 'open':
-      openFileDialog()
+      await openFileDialog()
       break
     case 'save':
-      saveCurrent()
+      await saveCurrent()
       break
     case 'undo':
       usesLibrary.value ? library.undo() : editor.undo()
@@ -158,17 +180,18 @@ function handleMenuAction(action) {
       toggleTheme()
       break
     case 'mode:view':
-      setMode('view')
+      await setMode('view')
       break
     case 'mode:logo':
-      setMode('logo')
+      await setMode('logo')
       break
     case 'mode:images':
-      setMode('images')
+      await setMode('images')
       break
     default:
       break
   }
+  } catch (error) { reportError(error) }
 }
 
 // --- Dateien von aussen -------------------------------------------------
@@ -178,27 +201,29 @@ function handleMenuAction(action) {
  * in den Betrachter - dort ist Platz fuer beliebig viele Bilder.
  */
 async function receiveExternalFiles({ files, error }) {
-  if (error) ui.setNotice('error', 'Could not read: ' + error, 8000)
-  if (!files.length) return
+  if (!files.length) { if (error) reportError(new Error(error)); return }
   if (ui.mode === 'logo') ui.setMode('view')
 
   // Wer eine Datei im Explorer oeffnet, will genau sie sehen - nicht das Bild,
   // das gerade offen war.
   const addedIds = await handleFiles(files)
   if (addedIds?.length) await library.select(addedIds[0])
+  if (error) ui.setNotice('error', 'Some files could not be opened: ' + error, 10000)
 }
 
 onMounted(() => {
   window.addEventListener('paste', onPaste)
   window.addEventListener('keydown', onKeyDown)
   releaseMenu = onMenuAction(handleMenuAction)
-  releaseFiles = onFilesOpened(receiveExternalFiles)
-  getStartupFiles().then(receiveExternalFiles)
+  releaseFiles = onFilesOpened(payload => receiveExternalFiles(payload).catch(reportError))
+  getStartupFiles().then(receiveExternalFiles).catch(reportError)
+  window.addEventListener('beforeunload', onBeforeUnload)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('paste', onPaste)
   window.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('beforeunload', onBeforeUnload)
   releaseMenu?.()
   releaseFiles?.()
 })
@@ -221,13 +246,13 @@ onBeforeUnmount(() => {
     </main>
 
     <Transition name="toast">
-      <div v-if="ui.notice" class="toast" :class="'toast--' + ui.notice.type">
+      <div v-if="ui.notice" class="toast" role="status" aria-live="polite" aria-atomic="true" :class="'toast--' + ui.notice.type">
         <AppIcon
           :name="ui.notice.type === 'error' ? 'alert' : ui.notice.type === 'success' ? 'check' : 'info'"
           :size="15"
         />
         <span>{{ ui.notice.message }}</span>
-        <button type="button" class="toast__close" @click="ui.dismissNotice()">
+        <button type="button" class="toast__close" aria-label="Dismiss notification" @click="ui.dismissNotice()">
           <AppIcon name="close" :size="13" />
         </button>
       </div>
@@ -244,6 +269,7 @@ onBeforeUnmount(() => {
       ref="fileInput"
       class="sr-only"
       type="file"
+      aria-label="Open images"
       :accept="accept"
       :multiple="usesLibrary"
       @change="onFileInput"

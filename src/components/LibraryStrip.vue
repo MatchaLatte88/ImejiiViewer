@@ -38,6 +38,7 @@ watch(
   <footer class="strip">
     <div class="strip__head">
       <span class="strip__count">{{ summary }}</span>
+      <AppButton v-if="store.isImporting" size="sm" @click="store.cancelImport()">Cancel import</AppButton>
       <span v-if="store.editedCount" class="strip__edited">{{ store.editedCount }} edited</span>
       <select
         class="strip__sort"
@@ -67,12 +68,14 @@ watch(
         class="thumb"
         :class="{ 'is-active': item.id === store.activeId }"
         :title="item.name + ' - ' + item.width + ' x ' + item.height"
-        @click="store.select(item.id)"
       >
+        <button type="button" class="thumb__select" :aria-label="'Select ' + item.name"
+          :aria-pressed="item.id === store.activeId" @click="store.select(item.id)">
         <span class="thumb__frame checkerboard">
           <img :src="item.thumbnail" :alt="item.name" loading="lazy" />
         </span>
         <span class="thumb__name">{{ item.name }}</span>
+        </button>
         <span v-if="hasEdits(item.edits)" class="thumb__badge" title="Edited">
           <AppIcon name="check" :size="10" />
         </span>
@@ -80,6 +83,7 @@ watch(
           type="button"
           class="thumb__remove"
           title="Remove from list"
+          :aria-label="'Remove ' + item.name"
           @click.stop="store.remove(item.id)"
         >
           <AppIcon name="close" :size="11" />
@@ -90,6 +94,8 @@ watch(
 </template>
 
 <style scoped>
+.thumb__select { display: block; width: 100%; border: 0; padding: 0; background: transparent; }
+.thumb:focus-within .thumb__remove { opacity: 1; }
 .strip {
   flex: none;
   background: var(--bg-panel);

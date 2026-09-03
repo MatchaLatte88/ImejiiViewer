@@ -10,10 +10,13 @@ die Verarbeitung passiert lokal – es wird nichts hochgeladen.
 Der Startbildschirm ist ein reiner Betrachter – ein Bild, sonst nichts.
 
 - `←` `→` blättern durch den Ordner des geöffneten Bildes (Desktop-Variante). Nachbarbilder
-  werden erst beim Anzeigen gelesen, der Speicher wächst beim Durchblättern also nicht mit.
+  werden erst beim Anzeigen gelesen. Bearbeitete Bilder und ihre History bleiben erhalten;
+  unbearbeitete, nur durchgeblätterte Nachbarn werden wieder freigegeben.
 - Vollbild per `F` oder Doppelklick: nur das Bild, Statusleiste und Pfeile ziehen sich nach
   kurzer Ruhe zurück und kommen bei jeder Mausbewegung wieder.
 - Zoom und Verschieben, Diashow mit einstellbarem Intervall, `Entf` schließt das Bild.
+- Der Zoomknopf lädt echte Originalauflösung nach (1:1-Pixel). Bis dahin ist die reduzierte
+  Ansicht großer Bilder ausdrücklich als „Preview“ gekennzeichnet.
 - Ein Klick führt weiter in den Bild-Modus (bearbeiten) oder den Logo-Modus (freistellen).
 
 ## Logo-Modus
@@ -40,7 +43,7 @@ Der Startbildschirm ist ein reiner Betrachter – ein Bild, sonst nichts.
 
 **Export**
 - PNG, WebP, JPG mit einstellbarer Qualität
-- Beliebige Größen einzeln oder als ZIP (16 – 1024 px)
+- Größen einzeln oder als Set (16 – 1024 px): Desktop in einen neuen Unterordner, Browser als ZIP
 - Multi-Resolution `.ico` (16/24/32/48/64/128/256) für Windows-Programme und Favicons
 - Fertige Pakete: Favicon (inkl. `site.webmanifest` und HTML-Snippet), PWA, Windows, macOS-Iconset, Android-mipmap, iOS, Web-Logo
 - PNG in die Zwischenablage kopieren
@@ -55,7 +58,7 @@ Der Startbildschirm ist ein reiner Betrachter – ein Bild, sonst nichts.
 ## Bild-Modus (Images)
 
 **Betrachten**
-- Beliebig viele Bilder gleichzeitig laden, Vorschauleiste mit Thumbnails
+- Bis zu 1.000 Bilder gleichzeitig laden, Vorschauleiste mit tastaturbedienbaren Thumbnails
 - Blättern per Pfeiltasten oder Klick, Sortierung nach Reihenfolge, Name, Größe oder Datum
 - Zoom und Verschieben, Vollbild, Diashow mit einstellbarem Intervall
 - Original per Leertaste einblenden
@@ -80,14 +83,25 @@ Der Startbildschirm ist ein reiner Betrachter – ein Bild, sonst nichts.
 **Konvertieren**
 - Einzelbild als PNG, WebP oder JPG speichern oder in die Zwischenablage kopieren
 - Stapelverarbeitung: gemeinsames Zielformat, Qualität und Größe für alle Bilder,
-  wahlweise mit oder ohne die Einzelbearbeitungen, Ergebnis als ZIP
+  wahlweise mit oder ohne Einzelbearbeitungen. Desktop: neuer Unterordner, Browser: ZIP.
+  Einstellungen, Bildliste und Wasserzeichen werden beim Start festgehalten. Abbruch ist möglich;
+  bereits fertig geschriebene Desktop-Dateien bleiben erhalten und ihr Pfad wird angezeigt.
 - Namensmuster mit `{name}`, `{index}`, `{width}`, `{height}`; Fortschrittsanzeige
 
 ### Unterstützte Eingabeformate
 
 `.png` `.jpg` `.jpeg` `.webp` `.gif` `.bmp` `.avif` `.svg` `.ico`
 
-Bilder mit mehr als 4096 px Kantenlänge werden beim Laden auf diese Größe reduziert.
+Grenzen und Exportverhalten:
+
+- Eingabe: maximal 128 MiB, 40 Megapixel und 16.384 px je Kante; ebenso maximal 40 MP pro Ergebnis-Canvas.
+- Fotos: Vorschau bis 2600 px, 1:1-Ansicht auf Wunsch in voller Auflösung; Export aus der Originalauflösung innerhalb der Sicherheitsgrenzen.
+- Logos: Arbeitsauflösung maximal 4096 px; größere Quellen werden verkleinert und die App zeigt einen Hinweis.
+- Browser: maximal 512 MiB Quelldateien in der Sammlung und 256 MiB unkomprimierte ZIP-Einträge.
+- Desktop: Originale werden über autorisierte Handles bei Bedarf gelesen. Ein Exportset ist auf 1.000 Dateien / 4 GiB begrenzt.
+- Animationen, mehrseitige Bilder, EXIF-/GPS-Metadaten und Farbprofile werden beim Canvas-Export nicht originalgetreu erhalten. Es wird ein statisches Rasterbild exportiert; SVG wird gerastert.
+- JPEG ist verlustbehaftet und unterstützt kein Alpha: transparente Bereiche werden weiß. PNG/WebP unterstützen Transparenz; WebP-Export kann verlustbehaftet sein.
+- Feste Icon-Pakete verwenden PNG/ICO unabhängig vom ausgewählten Einzelbildformat. Ein macOS-Paket ist ein PNG-Iconset, noch keine fertige ICNS-Datei.
 
 ### Tastenkürzel
 
@@ -96,7 +110,7 @@ Bilder mit mehr als 4096 px Kantenlänge werden beim Laden auf diese Größe red
 | `Strg` + `O` | Bild öffnen |
 | `Strg` + `V` | Bild aus der Zwischenablage einfügen |
 | `Strg` + `Z` / `Strg` + `Umschalt` + `Z` | Rückgängig / Wiederholen |
-| `Strg` + `S` | Als PNG in Originalgröße exportieren |
+| `Strg` + `S` | Aktuelles Ergebnis als PNG exportieren (Foto: Originalquelle; Logo: Arbeitsauflösung) |
 | `I` | Pipette ein-/ausschalten |
 | `Umschalt` + Klick (Pipette) | Weitere Farbe aufnehmen, Pipette bleibt aktiv |
 | `Leertaste` (halten) | Original einblenden |
@@ -139,7 +153,7 @@ Was die Desktop-Variante zusätzlich kann:
 - **Stapelexport in einen Ordner** statt in ein ZIP-Archiv – Zielordner wird abgefragt
 - **Anwendungsmenü** mit File / Edit / View / Help, inklusive Moduswechsel (`Strg+1`, `Strg+2`)
   und Theme-Umschaltung (`Strg+T`)
-- Nur eine Instanz gleichzeitig; externe Links öffnen im Systembrowser
+- Nur eine Instanz gleichzeitig; Dateiübergabe an die laufende App. Navigation und neue Fenster sind gesperrt.
 
 Die Oberfläche ist identisch – der Renderer erkennt über `src/lib/desktop.js`, ob er in Electron
 läuft, und wählt automatisch den passenden Weg. Im Browser bleibt alles beim Download-Verhalten.
@@ -148,7 +162,9 @@ Aufbau der Desktop-Schicht:
 
 ```
 electron/
-  main.cjs        Fenster, Anwendungsmenü, IPC-Handler (Dialoge, Dateien schreiben)
+  main.cjs        Fenster, Menüs, validierte IPC-Handler
+  security.cjs    Senderprüfung, internes imejii://-Protokoll und CSP
+  file-access.cjs Datei-/Export-Handles, Grenzen und kollisionssicheres Schreiben
   preload.cjs     contextBridge: die einzige Verbindung zwischen Renderer und Node
 scripts/
   electron-dev.mjs  startet Vite, wartet auf den Port und danach Electron
@@ -156,14 +172,36 @@ src/lib/desktop.js  Adapter: Systemdialoge im Desktop, Downloads im Browser
 ```
 
 Sicherheitseinstellungen des Fensters: `contextIsolation: true`, `nodeIntegration: false`,
-`sandbox: true`. Der Renderer hat keinen Zugriff auf Node – nur auf die acht Funktionen der Bridge.
+`sandbox: true`. Der Renderer hat keinen Zugriff auf Node. Die Bridge akzeptiert für
+Lesezugriffe nur vom Hauptprozess vergebene Bild-IDs und für Set-Exporte zeitlich begrenzte
+Export-Handles. Native Drag-and-drop-Dateien werden im Preload mit `webUtils` registriert.
+Jeder IPC-Aufruf prüft Fenster, Main-Frame und vertrauenswürdige URL. Dateien werden nicht als HTML geöffnet.
 
-**Verpacken** (Installer/portable .exe) ist bewusst noch nicht eingerichtet.
+## Prüfen und verpacken
+
+Node.js 24 und das eingecheckte Lockfile verwenden:
+
+```bash
+npm ci
+npm test                # Lint, Dateisicherheit, Build, Renderer-/Browser- und Desktop-Tests
+npm run pack:win        # lokaler Windows-x64-App-Ordner unter release/
+npm run dist:win        # lokaler NSIS-Installer, kein Upload
+npm run dist:win:signed # setzt erfolgreiche Code-Signierung zwingend voraus
+```
+
+Die Paketierung enthält nur die gebaute Oberfläche, Electron-Main/Preload und Metadaten,
+nicht Quellcode, Tests, Auditdateien oder node_modules. Icons werden aus der vorhandenen
+Imejii-Marke erzeugt; Lizenztexte der Produktionsabhängigkeiten werden mitgeliefert.
+ASAR-Integritätsprüfung und restriktive Electron-Fuses werden beim Packen aktiviert.
+
+**Ein lokales Paket ist noch keine Launch-Freigabe.** Publisher, Signierungszertifikat,
+Downloadkanal und Abnahme des installierten Programms stehen separat an.
+Details: [Release-Checkliste](docs/RELEASE.md), [Fix-Status](audit/2026-09-04/FIXES.md).
 
 ## Entwicklung
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -205,4 +243,18 @@ Originalfarben, unabhängig davon, wie stark später Helligkeit oder Sättigung 
 
 Die Vorschau rechnet auf einer verkleinerten Kopie (max. 1280 px, bei teuren Einstellungen
 automatisch weniger) und zieht nach kurzer Pause in voller Vorschauqualität nach. Exportiert
-wird immer aus der Originalauflösung.
+wird im Logo-Modus aus der maximal 4096 px großen Arbeitsquelle. Fotoexporte nutzen
+die Originalquelle innerhalb der Sicherheitsgrenzen. Aufwendige Fotoverarbeitung und
+Logo-Export laufen in einem abbrechbaren Worker.
+
+## Speicherung und Datenschutz
+
+Bildverarbeitung erfolgt lokal, ohne Upload, Analyse- oder Telemetriedienst. Die Desktop-App
+blockiert externe Renderer-Netzwerkanfragen. Theme und selbst gespeicherte Logo-Presets
+liegen lokal im App-Profil bzw. Browser-localStorage. Quelldateien werden nicht verändert,
+außer wenn man im nativen „Speichern unter“-Dialog ausdrücklich eine bestehende Datei ersetzt.
+
+Bearbeitungen und die aktuelle Sammlung werden nicht als Projekt dauerhaft gespeichert.
+Vor Schließen oder Verwerfen geänderter Bilder erscheint eine Rückfrage. Ein exportiertes
+Rasterbild enthält das Ergebnis, nicht den Undo-Verlauf. Bei Prozessabsturz oder Stromausfall
+können nicht exportierte Änderungen verloren gehen. Die App installiert keine automatischen Updates.

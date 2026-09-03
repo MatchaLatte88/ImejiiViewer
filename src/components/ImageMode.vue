@@ -53,7 +53,7 @@ usePhotoShortcuts(viewerRef, { editing: true })
         </button>
       </nav>
 
-      <section class="sidebar">
+      <section class="sidebar" :inert="store.isDecoding">
         <component :is="activePanel" />
       </section>
 
@@ -70,7 +70,7 @@ usePhotoShortcuts(viewerRef, { editing: true })
         <div class="empty__icon"><AppIcon name="layers" :size="28" /></div>
         <h2>Drop images here</h2>
         <p class="empty__lead">
-          View, edit and convert any number of images - crop, straighten, resize, adjust colors and
+          View, edit and convert up to 1,000 images - crop, straighten, resize, adjust colors and
           export the whole set in one go. Everything stays on your machine.
         </p>
 

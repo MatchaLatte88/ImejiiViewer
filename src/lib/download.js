@@ -20,7 +20,7 @@ export async function createZip(files) {
   const { default: JSZip } = await import('jszip')
   const zip = new JSZip()
   for (const file of files) {
-    if (file.blob) zip.file(file.name, file.blob)
+    if (file.blob) zip.file(file.name, file.blob, { compression: 'STORE' })
     else if (typeof file.text === 'string') zip.file(file.name, file.text)
   }
   return zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })

@@ -1,140 +1,123 @@
 import { createZip, downloadBlob } from './download.js'
-
-/**
- * Bruecke zur Desktop-Variante (Electron). Laeuft die App im Browser, greifen
- * automatisch die Web-Entsprechungen - der uebrige Code kennt den Unterschied nicht.
- */
 const api = typeof window !== 'undefined' ? window.desktopApi : null
+export const isDesktop = Boolean(api?.isDesktop)
 
-export const isDesktop = Boolean(api && api.isDesktop)
-
-/** Wandelt die Rohdaten aus dem Hauptprozess in File-Objekte um. */
-function toFiles(entries) {
-  return (entries || []).map((entry) => {
-    const file = new File([entry.buffer], entry.name, { type: entry.type })
-    // Der File-Konstruktor kennt keinen Pfad - fuers Blaettern im Ordner
-    // braucht der Betrachter ihn aber.
-    if (entry.path) file.desktopPath = entry.path
+export function toFiles(entries) {
+  return (entries || []).map(entry => {
+    const file = entry.buffer
+      ? new File([entry.buffer], entry.name, { type: entry.type, lastModified: entry.lastModified })
+      : { name: entry.name, type: entry.type, size: entry.size, lastModified: entry.lastModified }
+    if (entry.id) file.desktopId = entry.id
     return file
   })
 }
-
-/**
- * Dateiauswahl ueber den Systemdialog.
- * @returns {Promise<File[]|null>} null bedeutet abgebrochen
- */
+export async function resolveImageFile(file) {
+  if (file instanceof Blob) return file
+  if (!isDesktop || !file?.desktopId) throw new Error('Image is no longer available.')
+  const result = await api.readImages([file.desktopId])
+  if (!result.files?.length) throw new Error(result.error || 'Unable to read image.')
+  return toFiles(result.files)[0]
+}
+export async function adoptFiles(files) {
+  const accepted = []
+  const errors = []
+  for (const file of files) {
+    try {
+      if (!isDesktop || file.desktopId) { accepted.push(file); continue }
+      const result = await api.adoptFile(file)
+      if (result.error) errors.push(result.error)
+      if (result.files?.length) accepted.push(...toFiles(result.files))
+      else if (!result.error) accepted.push(file)
+    } catch (error) { errors.push(error.message) }
+  }
+  return { files: accepted, error: errors.join('; ') || null }
+}
 export async function pickImages({ multiple = true } = {}) {
   if (!isDesktop) return null
   const result = await api.openImages({ multiple })
-  if (result.canceled) return null
-  if (result.error) throw new Error(result.error)
-
-  return toFiles(result.files)
+  return result.canceled ? null : { files: toFiles(result.files), error: result.error }
 }
-
-/**
- * Dateien, mit denen die App geoeffnet wurde - etwa per Doppelklick im
- * Explorer. Im Browser gibt es sie nicht.
- * @returns {Promise<{files: File[], error: string|null}>}
- */
 export async function getStartupFiles() {
   if (!isDesktop) return { files: [], error: null }
   const result = await api.getStartupFiles()
   return { files: toFiles(result.files), error: result.error }
 }
-
-/**
- * Dateien, die waehrend des Betriebs hereingereicht werden (zweite Instanz).
- * @returns {() => void} Funktion zum Abmelden
- */
 export function onFilesOpened(handler) {
   if (!isDesktop) return () => {}
-  return api.onFilesOpened((payload) =>
-    handler({ files: toFiles(payload.files), error: payload.error }),
-  )
+  return api.onFilesOpened(payload => handler({ files: toFiles(payload.files), error: payload.error }))
 }
-
-/**
- * Bilder im Ordner einer Datei - alphabetisch, ohne die Inhalte zu lesen.
- * @returns {Promise<{dir: string, names: string[], separator: string}|null>} null im Browser
- */
-export async function listFolderImages(filePath) {
-  if (!isDesktop || !filePath) return null
-  return api.listFolder(filePath)
+export async function listFolderImages(id) {
+  return isDesktop && id ? api.listFolder(id) : null
 }
-
-/**
- * Bilder zu bekannten Pfaden nachladen.
- * @returns {Promise<{files: File[], error: string|null}>}
- */
-export async function readImagesByPath(filePaths) {
+export async function readImagesById(ids) {
   if (!isDesktop) return { files: [], error: null }
-  const result = await api.readImages(filePaths)
+  const result = await api.readImages(ids)
   return { files: toFiles(result.files), error: result.error }
 }
-
-/**
- * Einzelne Datei sichern: im Desktop mit "Speichern unter", im Browser als Download.
- * @returns {Promise<{saved: boolean, path?: string}>}
- */
-export async function saveBlob(blob, filename) {
-  if (!isDesktop) {
-    downloadBlob(blob, filename)
-    return { saved: true }
-  }
-
-  const extension = (filename.split('.').pop() || '').toLowerCase()
+export function confirmDiscard(message) {
+  return isDesktop ? api.confirmDiscard(message) : Promise.resolve(window.confirm(message))
+}
+export async function saveBlob(blob, filename, { signal } = {}) {
+  signal?.throwIfAborted()
+  if (!isDesktop) { downloadBlob(blob, filename); return { saved: true } }
+  const buffer = await blob.arrayBuffer()
+  signal?.throwIfAborted()
   const result = await api.saveFile({
-    defaultName: filename,
-    extension,
-    buffer: await blob.arrayBuffer(),
+    defaultName: filename, extension: (filename.split('.').pop() || '').toLowerCase(),
+    buffer,
   })
   return result.canceled ? { saved: false } : { saved: true, path: result.path }
 }
-
-/**
- * Mehrere Dateien sichern. Auf dem Desktop wandern sie in einen gewaehlten
- * Ordner, im Browser in ein ZIP-Archiv.
- * @param {Array<{name: string, blob?: Blob, text?: string}>} files
- * @param {{zipName: string}} options
- * @returns {Promise<{mode: 'folder'|'zip'|'canceled', count: number, path?: string}>}
- */
-export async function saveFileSet(files, { zipName }) {
+export async function beginFileSet({ zipName }) {
+  const target = isDesktop ? await api.selectFolder(zipName.replace(/\.zip$/i, '')) : null
+  if (target?.canceled) return null
+  const files = []
+  let bytes = 0, count = 0, closed = false
+  return {
+    path: target?.path,
+    async write(file) {
+      if (closed) throw new Error('Export already closed.')
+      const blob = file.blob || new Blob([file.text || ''], { type: 'text/plain' })
+      if (isDesktop) await api.writeInto({ token: target.token, name: file.name, buffer: await blob.arrayBuffer() })
+      else {
+        bytes += blob.size
+        if (bytes > 256 * 1024 * 1024) throw new Error('Browser ZIP limit is 256 MiB. Export fewer images or use the desktop app.')
+        files.push({ name: file.name, blob })
+      }
+      count++
+    },
+    async finish({ canceled = false } = {}) {
+      if (closed) return { mode: 'canceled', count, path: target?.path }
+      closed = true
+      if (isDesktop) return { ...await api.finishFileSet(target.token), mode: 'folder', canceled }
+      if (!canceled && files.length) downloadBlob(await createZip(files), zipName)
+      return { mode: canceled ? 'canceled' : 'zip', count }
+    },
+  }
+}
+export async function saveFileSet(files, options) {
   if (!files.length) return { mode: 'canceled', count: 0 }
-
-  if (!isDesktop) {
-    const zip = await createZip(files)
-    downloadBlob(zip, zipName)
-    return { mode: 'zip', count: files.length }
+  options.signal?.throwIfAborted()
+  const session = await beginFileSet(options)
+  if (!session) return { mode: 'canceled', count: 0 }
+  try {
+    for (const file of files) {
+      options.signal?.throwIfAborted()
+      await session.write(file)
+    }
+    options.signal?.throwIfAborted()
+    return await session.finish()
+  } catch (error) {
+    const result = await session.finish({ canceled: true })
+    throw new Error(error.message + (result.path ? ' Completed files kept in: ' + result.path : ''), { cause: error })
   }
-
-  const folder = await api.selectFolder()
-  if (folder.canceled) return { mode: 'canceled', count: 0 }
-
-  for (const file of files) {
-    const buffer = file.blob
-      ? await file.blob.arrayBuffer()
-      : new TextEncoder().encode(file.text || '').buffer
-    await api.writeInto({ folder: folder.path, name: file.name, buffer })
-  }
-
-  return { mode: 'folder', count: files.length, path: folder.path }
 }
-
-/** Zeigt eine gespeicherte Datei im Dateimanager - nur auf dem Desktop. */
 export function revealFile(filePath) {
-  if (isDesktop && filePath) api.showItemInFolder(filePath)
+  return isDesktop && filePath ? api.showItemInFolder(filePath) : Promise.resolve()
 }
-
-/**
- * Menuebefehle des Hauptprozesses abonnieren.
- * @returns {() => void} Funktion zum Abmelden
- */
 export function onMenuAction(handler) {
-  if (!isDesktop) return () => {}
-  return api.onMenuAction(handler)
+  return isDesktop ? api.onMenuAction(handler) : () => {}
 }
-
 export function getAppInfo() {
   return isDesktop ? api.getAppInfo() : Promise.resolve(null)
 }

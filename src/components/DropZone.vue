@@ -1,4 +1,5 @@
 <script setup>
+import { isDesktop } from '../lib/desktop.js'
 import { ACCEPTED_EXTENSIONS } from '../lib/imageLoader.js'
 import AppIcon from './ui/AppIcon.vue'
 import AppButton from './ui/AppButton.vue'
@@ -20,7 +21,7 @@ const emit = defineEmits(['open-file'])
       <h2>Drop an image here</h2>
       <p class="dropzone__lead">
         Turn any image into a transparent logo or a complete icon set -
-        entirely in your browser, nothing is uploaded.
+        entirely on your device, nothing is uploaded.
       </p>
 
       <div class="dropzone__actions">
@@ -53,7 +54,7 @@ const emit = defineEmits(['open-file'])
           <span class="step__num">3</span>
           <div>
             <b>Export the icon set</b>
-            <p>PNG, WebP, JPG or a multi-size ICO, packed as a ZIP.</p>
+            <p>PNG, WebP, JPG or a multi-size ICO. {{ isDesktop ? 'Sets go into a new folder.' : 'Sets download as ZIP.' }}</p>
           </div>
         </div>
       </div>

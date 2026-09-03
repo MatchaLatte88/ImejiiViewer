@@ -9,10 +9,18 @@ export const EXPORT_FORMATS = {
 /** Canvas -> Blob. Wirft, wenn der Browser das Format nicht kodieren kann. */
 export function canvasToBlob(canvas, format = 'png', quality = 0.92) {
   const config = EXPORT_FORMATS[format] || EXPORT_FORMATS.png
+  if (!config.supportsAlpha) {
+    const opaque = createCanvas(canvas.width, canvas.height)
+    const ctx = opaque.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, opaque.width, opaque.height)
+    ctx.drawImage(canvas, 0, 0)
+    canvas = opaque
+  }
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
-        if (!blob) {
+        if (!blob || blob.type !== config.mime) {
           reject(new Error('Export failed: ' + config.label + ' is not supported.'))
           return
         }

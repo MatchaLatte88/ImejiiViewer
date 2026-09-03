@@ -1,4 +1,5 @@
 <script setup>
+import { isDesktop } from '../../lib/desktop.js'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useLibraryStore } from '../../stores/library.js'
 import { useUiStore } from '../../stores/ui.js'
@@ -69,8 +70,8 @@ const RESIZE_MODES = [
   { value: 'percent', label: 'Percent' },
 ]
 
-const disabled = computed(() => !store.activeItem || busy.value !== '')
-const batchDisabled = computed(() => !store.items.length || store.batchProgress !== null)
+const disabled = computed(() => !store.activeItem || store.isDecoding || store.exportBusy || Boolean(store.batchProgress) || busy.value !== '')
+const batchDisabled = computed(() => !store.items.length || store.isImporting || store.exportBusy || store.batchProgress !== null)
 
 const batchUnit = computed(() => (store.batch.resize.mode === 'percent' ? '%' : 'px'))
 const batchMax = computed(() => (store.batch.resize.mode === 'percent' ? 400 : 8000))
@@ -113,6 +114,7 @@ function setBatchMode(mode) {
   <aside class="export">
     <section class="panel-section">
       <div class="section-title"><span>Save current image</span></div>
+      <AppButton v-if="store.exportBusy" @click="store.cancelExport()">Cancel export</AppButton>
       <div class="stack">
         <SegmentedControl v-model="singleFormat" :options="formatOptions" />
         <SliderControl
@@ -124,6 +126,7 @@ function setBatchMode(mode) {
           :max="100"
           :reset-value="92"
         />
+        <p v-if="singleFormat === 'jpeg'" class="hint">JPEG has no transparency. Transparent areas become white.</p>
         <p v-if="singleEstBytes != null" class="hint">
           ~{{ formatBytes(singleEstBytes) }} estimated (preview resolution)
         </p>
@@ -211,6 +214,7 @@ function setBatchMode(mode) {
           :max="100"
           :reset-value="88"
         />
+        <p v-if="store.batch.format === 'jpeg'" class="hint">JPEG uses a white background for transparent areas.</p>
         <p v-if="batchEstBytes != null" class="hint">
           ~{{ formatBytes(batchEstBytes) }} per image (approx., current photo)
         </p>
@@ -233,7 +237,7 @@ function setBatchMode(mode) {
         <ToggleSwitch
           v-model="store.batch.applyEdits"
           label="Apply per-image edits"
-          hint="Off exports the untouched originals in the chosen format"
+          hint="Off skips per-image edits. Batch resize and watermark still apply."
         />
 
         <label class="field">
@@ -255,7 +259,9 @@ function setBatchMode(mode) {
           </li>
         </ul>
 
-        <div v-if="store.batchProgress" class="progress">
+        <p class="hint">{{ isDesktop ? 'Exports go into a new, unique subfolder. Existing files are preserved.' : 'ZIP limit: 256 MiB.' }} Settings are captured when export starts.</p>
+        <AppButton v-if="store.batchProgress" @click="store.cancelBatch()">Cancel export</AppButton>
+        <div v-if="store.batchProgress" class="progress" role="status" aria-live="polite">
           <div class="progress__bar"><span :style="{ width: progressPercent + '%' }" /></div>
           <span class="hint">
             {{ store.batchProgress.done }} / {{ store.batchProgress.total }} -
@@ -270,7 +276,7 @@ function setBatchMode(mode) {
           :disabled="batchDisabled"
           @click="store.runBatch()"
         >
-          {{ store.items.length > 1 ? 'Export ' + store.items.length + ' images as ZIP' : 'Export image' }}
+          {{ 'Export ' + store.items.length + ' image(s)' + (isDesktop ? ' to folder' : ' as ZIP') }}
         </AppButton>
       </div>
     </section>

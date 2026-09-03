@@ -1,0 +1,136 @@
+{
+  "smoke": {
+    "title": "Imejii",
+    "rootChildren": 1,
+    "bridge": true,
+    "node": "undefined",
+    "csp": false
+  },
+  "consoleErrors": [
+    "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+  ],
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) ImejiiAudit/44.1.1 Chrome/152.0.7977.65 Electron/44.1.1 Safari/537.36",
+  "results": [
+    {
+      "name": "PNG identity, photo pipeline",
+      "status": "PASS"
+    },
+    {
+      "name": "PNG identity, logo pipeline",
+      "status": "PASS"
+    },
+    {
+      "name": "png encoder returns requested MIME and decodable pixels",
+      "status": "PASS"
+    },
+    {
+      "name": "jpeg encoder returns requested MIME and decodable pixels",
+      "status": "PASS"
+    },
+    {
+      "name": "webp encoder returns requested MIME and decodable pixels",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO directory and embedded PNG signatures",
+      "status": "PASS"
+    },
+    {
+      "name": "EXIF orientation 1 matches native decoded JPEG",
+      "status": "PASS"
+    },
+    {
+      "name": "EXIF orientation 2 matches native decoded JPEG",
+      "status": "FAIL",
+      "detail": "native=80x40, app=80x40; pixels/dimensions differ (double orientation)"
+    },
+    {
+      "name": "EXIF orientation 3 matches native decoded JPEG",
+      "status": "FAIL",
+      "detail": "native=80x40, app=80x40; pixels/dimensions differ (double orientation)"
+    },
+    {
+      "name": "EXIF orientation 4 matches native decoded JPEG",
+      "status": "FAIL",
+      "detail": "native=80x40, app=80x40; pixels/dimensions differ (double orientation)"
+    },
+    {
+      "name": "EXIF orientation 5 matches native decoded JPEG",
+      "status": "FAIL",
+      "detail": "native=40x80, app=80x40; pixels/dimensions differ (double orientation)"
+    },
+    {
+      "name": "EXIF orientation 6 matches native decoded JPEG",
+      "status": "FAIL",
+      "detail": "native=40x80, app=80x40; pixels/dimensions differ (double orientation)"
+    },
+    {
+      "name": "EXIF orientation 7 matches native decoded JPEG",
+      "status": "FAIL",
+      "detail": "native=40x80, app=80x40; pixels/dimensions differ (double orientation)"
+    },
+    {
+      "name": "EXIF orientation 8 matches native decoded JPEG",
+      "status": "FAIL",
+      "detail": "native=40x80, app=80x40; pixels/dimensions differ (double orientation)"
+    },
+    {
+      "name": "Undo availability reacts after an edit",
+      "status": "FAIL",
+      "detail": "canUndo remains false after history commit"
+    },
+    {
+      "name": "Undo survives immediate image switching",
+      "status": "FAIL",
+      "detail": "rotation remains 90 after undo"
+    },
+    {
+      "name": "Apply to all can be undone on the receiving image",
+      "status": "FAIL",
+      "detail": "receiving image has blur=2 with no undo snapshot"
+    },
+    {
+      "name": "The latest selection wins asynchronous decoding",
+      "status": "FAIL",
+      "detail": "active=fast.png (30px), source=80px"
+    },
+    {
+      "name": "Horizontal flip after 90-degree rotation uses the displayed axis",
+      "status": "FAIL",
+      "detail": "horizontal flip after rotation flips along the source axis"
+    },
+    {
+      "name": "Batch preview respects disabled per-image edits",
+      "status": "FAIL",
+      "detail": "shown=40x20, untouched export=80x40"
+    },
+    {
+      "name": "Batch-generated filenames stay unique after collision suffixes",
+      "status": "FAIL",
+      "detail": "output names=a.png, a-3.png, a-3.png"
+    },
+    {
+      "name": "Batch captures settings before asynchronous rendering",
+      "status": "FAIL",
+      "detail": "output=slow.png, contents=JPEG"
+    },
+    {
+      "name": "Favicon bundle PNG filenames contain PNG data even if JPEG was selected",
+      "status": "FAIL",
+      "detail": "favicon-16x16.png starts with 255,216,255 (JPEG)"
+    },
+    {
+      "name": "Folder navigation preserves edited images when returning from editor to viewer",
+      "status": "FAIL",
+      "detail": "edited item and its history were removed when browsing the folder"
+    },
+    {
+      "name": "Photo geometry calculations match canvas dimensions",
+      "status": "PASS"
+    },
+    {
+      "name": "Logo loader applies its documented 4096px working limit",
+      "status": "PASS"
+    }
+  ]
+}

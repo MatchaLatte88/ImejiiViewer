@@ -1,3 +1,4 @@
+import { checkDimensions } from './imageLimits.js'
 export const DEFAULT_TRANSFORM = {
   rotate: 0, // -180..180 Grad
   flipH: false,
@@ -11,7 +12,10 @@ export const DEFAULT_TRANSFORM = {
 
 /** Erzeugt ein Canvas aus ImageData. */
 export function createCanvas(width, height) {
-  const canvas = document.createElement('canvas')
+  width = Math.max(1, Math.round(width))
+  height = Math.max(1, Math.round(height))
+  checkDimensions(width, height)
+  const canvas = typeof document === 'undefined' ? new OffscreenCanvas(width, height) : document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(width))
   canvas.height = Math.max(1, Math.round(height))
   return canvas

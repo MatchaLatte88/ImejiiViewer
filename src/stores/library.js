@@ -1,4 +1,4 @@
-import { computed, markRaw, ref, shallowRef, watch } from 'vue'
+import { computed, markRaw, reactive, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { decodePhoto, readPhotoInfo } from '../lib/photoLoader.js'
 import {
@@ -9,7 +9,6 @@ import {
   flipCropRect,
   hasEdits,
   previewGeometry,
-  processPhoto,
   resolveTargetSize,
   rotateCropRect,
 } from '../lib/photoPipeline.js'
@@ -17,7 +16,9 @@ import { DEFAULT_ADJUSTMENTS } from '../lib/adjustments.js'
 import { canvasToImageData } from '../lib/transform.js'
 import { EXPORT_FORMATS, canvasToBlob, slugify } from '../lib/exportImage.js'
 import { applyWatermark } from '../lib/watermark.js'
-import { isDesktop, listFolderImages, readImagesByPath, saveBlob, saveFileSet } from '../lib/desktop.js'
+import { isDesktop, listFolderImages, readImagesById, saveBlob, beginFileSet, confirmDiscard } from '../lib/desktop.js'
+import { processPhotoAsync } from '../lib/photoProcessing.js'
+import { exportName, uniqueExportName } from '../lib/exportNames.js'
 import { useUiStore } from './ui.js'
 
 /** Kantenlaenge, mit der das aktive Bild fuer die Ansicht dekodiert wird. */
@@ -74,9 +75,21 @@ export const useLibraryStore = defineStore('library', () => {
     scale: 4,
   })
 
-  const history = new Map() // itemId -> { undo: [], redo: [] }
-  let historyTimer = null
-  let lastCommitted = null
+  const history = reactive(new Map())
+  const historyTimers = new Map()
+  let restoringHistory = false
+  let selectionVersion = 0
+  let sourceId = null
+  let renderController = null
+  let batchController = null
+  let exportController = null
+  let importCanceled = false
+  let importQueue = Promise.resolve()
+  const sourceLimit = ref(VIEW_MAX_SIZE)
+  const exportBusy = ref(false)
+  const folderNavigation = ref(false)
+  const isDirty = computed(() => items.value.some(item => hasEdits(item.edits)))
+  const hasPendingWork = computed(() => isDirty.value || isImporting.value || exportBusy.value || Boolean(batchProgress.value))
 
   const activeItem = computed(() => items.value.find((item) => item.id === activeId.value) || null)
   const activeIndex = computed(() => items.value.findIndex((item) => item.id === activeId.value))
@@ -90,32 +103,58 @@ export const useLibraryStore = defineStore('library', () => {
     return previewGeometry(item.width, item.height, item.edits)
   })
 
-  const canUndo = computed(() => (history.get(activeId.value)?.undo.length || 0) > 0)
+  const canUndo = computed(() => {
+    const item = activeItem.value
+    const entry = history.get(item?.id)
+    return Boolean(entry && (entry.undo.length || JSON.stringify(item.edits) !== entry.committed))
+  })
   const canRedo = computed(() => (history.get(activeId.value)?.redo.length || 0) > 0)
 
   const histogram = shallowRef(null)
 
   // --- Import ------------------------------------------------------------
   /** @returns {Promise<number[]>} Kennungen der neu aufgenommenen Bilder */
-  async function addFiles(fileList) {
+  function addFiles(fileList) {
     const files = Array.from(fileList || [])
-    if (!files.length) return []
+    const pending = importQueue.then(() => addFilesImpl(files))
+    importQueue = pending.catch(() => {})
+    return pending
+  }
+  async function addFilesImpl(fileList) {
+    const files = Array.from(fileList || [])
+    if (!files.length || isImporting.value) return []
+    if (items.value.length + files.length > 1000) {
+      ui.setNotice('error', 'A collection can contain at most 1,000 images.', 8000)
+      return []
+    }
+    const retainedBytes = [...items.value.map(item => item.file), ...files]
+      .filter(file => !file.desktopId).reduce((sum, file) => sum + file.size, 0)
+    if (retainedBytes > 512 * 1024 * 1024) {
+      ui.setNotice('error', 'Browser collection limit is 512 MiB. Use fewer files or open them in the desktop app.', 8000)
+      return []
+    }
+    importCanceled = false
+    folderNavigation.value = items.value.length === 0 && files.length === 1 && Boolean(files[0].desktopId)
 
     isImporting.value = true
     const addedIds = []
     const failed = []
 
     for (const file of files) {
+      if (importCanceled) break
+      if (file.desktopId && items.value.some(item => item.file.desktopId === file.desktopId)) continue
       try {
         const info = await readPhotoInfo(file)
+        if (importCanceled) break
         const id = nextId++
         items.value.push({
           id,
           file: markRaw(file),
-          path: file.desktopPath || null,
+          desktopId: file.desktopId || null,
           ...info,
           edits: createEdits(),
         })
+        entryFor(id)
         addedIds.push(id)
       } catch (error) {
         failed.push(file.name + ' (' + error.message + ')')
@@ -136,12 +175,25 @@ export const useLibraryStore = defineStore('library', () => {
     return addedIds
   }
 
-  async function select(id) {
-    if (id === activeId.value && sourceCanvas.value) return
+  function cancelImport() { importCanceled = true }
+
+  async function select(id, { fullResolution = false } = {}) {
+    if (id === activeId.value && sourceCanvas.value && (!fullResolution || sourceLimit.value === 0)) return
     const item = items.value.find((entry) => entry.id === id)
     if (!item) return
 
+    commitHistory(activeItem.value)
+    const version = ++selectionVersion
+    cancelPendingRender()
+    renderController?.abort()
+    sourceCanvas.value = null
+    previewCanvas.value = null
+    histogram.value = null
+    sourceId = null
+    isRendering.value = false
     activeId.value = id
+    sourceLimit.value = fullResolution ? 0 : VIEW_MAX_SIZE
+    entryFor(id)
     cropMode.value = false
     cropDraft.value = null
     fitToView.value = true
@@ -150,24 +202,31 @@ export const useLibraryStore = defineStore('library', () => {
 
     try {
       const canvas = await decodePhoto(item.file, {
-        maxSize: VIEW_MAX_SIZE,
+        maxSize: sourceLimit.value,
         orientation: item.orientation,
       })
+      if (version !== selectionVersion || activeId.value !== id) return
+      sourceId = id
       sourceCanvas.value = markRaw(canvas)
-      lastCommitted = JSON.stringify(item.edits)
-      renderNow()
+      await renderNow()
     } catch (error) {
+      if (version !== selectionVersion) return
       ui.setNotice('error', 'Could not open ' + item.name + ': ' + error.message, 8000)
       sourceCanvas.value = null
       previewCanvas.value = null
     } finally {
-      isDecoding.value = false
+      if (version === selectionVersion) isDecoding.value = false
     }
   }
 
-  function remove(id) {
-    const index = items.value.findIndex((item) => item.id === id)
+  async function remove(id) {
+    let index = items.value.findIndex((item) => item.id === id)
     if (index < 0) return
+    if (hasEdits(items.value[index].edits) && !await confirmDiscard('Remove this image and discard its edits?')) return
+    index = items.value.findIndex(item => item.id === id)
+    if (index < 0) return
+    clearTimeout(historyTimers.get(id))
+    historyTimers.delete(id)
     items.value.splice(index, 1)
     history.delete(id)
 
@@ -176,6 +235,11 @@ export const useLibraryStore = defineStore('library', () => {
       if (next) {
         select(next.id)
       } else {
+        selectionVersion++
+        renderController?.abort()
+        cancelPendingRender()
+        isRendering.value = false
+        isDecoding.value = false
         activeId.value = null
         sourceCanvas.value = null
         previewCanvas.value = null
@@ -183,7 +247,18 @@ export const useLibraryStore = defineStore('library', () => {
     }
   }
 
-  function clearAll() {
+  async function clearAll() {
+    if (isDirty.value && !await confirmDiscard('Clear the collection and discard all image edits?')) return
+    cancelImport()
+    selectionVersion++
+    renderController?.abort()
+    cancelPendingRender()
+    for (const timer of historyTimers.values()) clearTimeout(timer)
+    historyTimers.clear()
+    folder.value = null
+    folderNavigation.value = false
+    isDecoding.value = false
+    isRendering.value = false
     items.value = []
     history.clear()
     activeId.value = null
@@ -195,132 +270,76 @@ export const useLibraryStore = defineStore('library', () => {
   // Ein einzeln geoeffnetes Bild (Doppelklick im Explorer) laesst sich wie in
   // jedem Bildbetrachter durchblaettern: die Pfeiltasten laufen durch den
   // ganzen Ordner, nicht nur durch die geladenen Bilder.
-  const folder = ref(null) // { key, dir, names, separator } - Ordner des aktiven Bildes
+  const folder = ref(null)
   let folderBusy = false
 
-  /** Ordnerteil eines Pfads - Windows und POSIX. */
-  function dirOf(filePath) {
-    const cut = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'))
-    return cut > 0 ? filePath.slice(0, cut) : ''
-  }
-
-  /** Dateiname eines Pfads, gemessen am Ordner der Liste. */
-  function nameIn(listing, filePath) {
-    return filePath.slice(listing.dir.length).replace(/^[\\/]+/, '')
-  }
-
-  /**
-   * Liest den Ordner des aktiven Bildes ein - einmal je Ordner. Der Betrachter
-   * stoesst das beim Bildwechsel an, damit Pfeile und Zaehler stimmen.
-   */
   async function ensureFolder() {
     const item = activeItem.value
-    if (!isDesktop || !item?.path) {
-      folder.value = null
+    if (!isDesktop || !item?.desktopId) { folder.value = null; return null }
+    if (folder.value?.entries.some(entry => entry.id === item.desktopId)) return folder.value
+    try {
+      const listing = await listFolderImages(item.desktopId)
+      if (activeId.value !== item.id) return null
+      folder.value = listing
+      return listing
+    } catch (error) {
+      if (activeId.value === item.id) folder.value = null
+      ui.setNotice('error', 'Could not read the folder: ' + error.message, 6000)
       return null
     }
-
-    const key = dirOf(item.path)
-    if (folder.value?.key === key) return folder.value
-
-    try {
-      const listing = await listFolderImages(item.path)
-      folder.value = listing ? { key, ...listing } : null
-    } catch (error) {
-      folder.value = null
-      ui.setNotice('error', 'Could not read the folder: ' + error.message, 6000)
-    }
-    return folder.value
   }
+  const folderIndex = computed(() => ui.mode === 'view'
+    ? folder.value?.entries.findIndex(entry => entry.id === activeItem.value?.desktopId) ?? -1 : -1)
+  const canStep = computed(() => items.value.length > 1 || (folderIndex.value >= 0 && folder.value.entries.length > 1))
+  const position = computed(() => folderNavigation.value && folderIndex.value >= 0
+    ? { index: folderIndex.value + 1, total: folder.value.entries.length }
+    : { index: activeIndex.value + 1, total: items.value.length })
 
-  /** Platz des aktiven Bildes im Ordner - -1, wenn er nicht bekannt ist. */
-  const folderIndex = computed(() => {
-    const item = activeItem.value
-    const listing = folder.value
-    if (ui.mode !== 'view' || !item?.path || !listing) return -1
-    return listing.names.indexOf(nameIn(listing, item.path))
-  })
-
-  /** Laesst sich ueberhaupt blaettern - in der Sammlung oder im Ordner? */
-  const canStep = computed(
-    () => items.value.length > 1 || (folderIndex.value >= 0 && folder.value.names.length > 1),
-  )
-
-  /** Anzeige "x / y": im Betrachter zaehlt der Ordner, sonst die Sammlung. */
-  const position = computed(() => {
-    if (items.value.length === 1 && folderIndex.value >= 0) {
-      return { index: folderIndex.value + 1, total: folder.value.names.length }
-    }
-    return { index: activeIndex.value + 1, total: items.value.length }
-  })
-
-  /**
-   * Blaettert im Ordner des aktiven Bildes. Das Nachbarbild wird erst beim
-   * Anzeigen gelesen und ersetzt das bisherige - so waechst der Speicher beim
-   * Durchblaettern grosser Ordner nicht mit.
-   * @returns {Promise<boolean>} false, wenn nicht geblaettert werden konnte
-   */
   async function stepFolder(delta) {
     const item = activeItem.value
-    // Nur im Betrachter: im Bildmodus wuerde das Ersetzen Bearbeitungen verwerfen.
-    if (ui.mode !== 'view' || !isDesktop || !item?.path || folderBusy) return false
-
-    const listing = await ensureFolder()
-    if (!listing || listing.names.length < 2) return false
-
-    const index = listing.names.indexOf(nameIn(listing, item.path))
-    if (index < 0) {
-      // Der Ordner hat sich geaendert - beim naechsten Versuch neu einlesen.
-      folder.value = null
-      return false
-    }
-
-    const nextName = listing.names[(index + delta + listing.names.length) % listing.names.length]
-    const separator = listing.dir.endsWith(listing.separator) ? '' : listing.separator
-    const nextPath = listing.dir + separator + nextName
-
+    if (ui.mode !== 'view' || !isDesktop || !item?.desktopId || folderBusy) return false
     folderBusy = true
-    isDecoding.value = true
     try {
-      const { files, error } = await readImagesByPath([nextPath])
-      if (!files.length) throw new Error(error || 'file could not be read')
-
-      const info = await readPhotoInfo(files[0])
-      const id = nextId++
-      const fresh = {
-        id,
-        file: markRaw(files[0]),
-        path: nextPath,
-        ...info,
-        edits: createEdits(),
+      const listing = await ensureFolder()
+      if (!listing || listing.entries.length < 2 || activeId.value !== item.id) return false
+      const index = listing.entries.findIndex(entry => entry.id === item.desktopId)
+      if (index < 0) { folder.value = null; return false }
+      const next = listing.entries[(index + delta + listing.entries.length) % listing.entries.length]
+      let fresh = items.value.find(entry => entry.desktopId === next.id)
+      if (!fresh) {
+        // Only the requested neighbor is read; edits and history of existing images survive.
+        const { files, error } = await readImagesById([next.id])
+        if (!files.length) throw new Error(error || 'Image could not be read.')
+        const info = await readPhotoInfo(files[0])
+        if (activeId.value !== item.id || ui.mode !== 'view') return false
+        if (items.value.length >= 1000) throw new Error('Collection limit reached. Remove some images first.')
+        const descriptor = { desktopId: next.id, name: info.name, type: info.type, size: info.size, lastModified: info.lastModified }
+        fresh = { id: nextId++, file: markRaw(descriptor), desktopId: next.id, ...info, edits: createEdits(), ephemeral: true }
+        items.value.push(fresh)
+        entryFor(fresh.id)
       }
-
-      // Das bisherige Bild wird an seiner Stelle ersetzt und nicht erst
-      // angehaengt: sonst waeren fuer die Dauer des Ladens zwei Bilder in der
-      // Sammlung - Bibliotheksleiste und Zaehler wuerden aufblitzen und die
-      // Buehne dabei springen.
-      const slot = items.value.findIndex((candidate) => candidate.id === item.id)
-      items.value.splice(slot, 1, fresh)
-      history.delete(item.id)
-      await select(id)
+      await select(fresh.id)
+      const oldHistory = history.get(item.id)
+      if (item.ephemeral && !hasEdits(item.edits) && !oldHistory?.undo.length && !oldHistory?.redo.length) {
+        const slot = items.value.findIndex(entry => entry.id === item.id)
+        if (slot >= 0) items.value.splice(slot, 1)
+        clearTimeout(historyTimers.get(item.id))
+        historyTimers.delete(item.id)
+        history.delete(item.id)
+      }
       return true
-    } catch (failure) {
-      ui.setNotice('error', 'Could not open ' + nextName + ': ' + failure.message, 8000)
+    } catch (error) {
+      ui.setNotice('error', 'Could not open neighbor: ' + error.message, 8000)
       return false
-    } finally {
-      folderBusy = false
-      isDecoding.value = false
-    }
+    } finally { folderBusy = false }
   }
-
   function step(delta) {
+    if (folderNavigation.value && ui.mode === 'view') return stepFolder(delta)
     if (items.value.length > 1) {
-      const index = activeIndex.value
-      const next = (index + delta + items.value.length) % items.value.length
-      select(items.value[next].id)
-      return
+      const next = (activeIndex.value + delta + items.value.length) % items.value.length
+      return select(items.value[next].id)
     }
-    stepFolder(delta)
+    return stepFolder(delta)
   }
 
   function sortBy(mode) {
@@ -360,19 +379,26 @@ export const useLibraryStore = defineStore('library', () => {
     renderNow()
   }
 
-  function renderNow() {
+  async function renderNow() {
     const item = activeItem.value
-    if (!item || !sourceCanvas.value) return
+    if (!item || !sourceCanvas.value || sourceId !== item.id) return
+    renderController?.abort()
+    const controller = new AbortController()
+    renderController = controller
+    isRendering.value = true
     try {
       // Die Ansicht ist bereits skaliert - die Resize-Regel gilt nur beim Export.
-      const canvas = processPhoto(sourceCanvas.value, item.edits, { skipResize: true })
+      const factor = Math.max(1, Math.max(sourceCanvas.value.width, sourceCanvas.value.height) / VIEW_MAX_SIZE)
+      const canvas = await processPhotoAsync(sourceCanvas.value, { ...item.edits, blur: item.edits.blur > 0 ? Math.round(item.edits.blur * factor) : 0 }, { skipResize: true }, controller.signal)
+      if (controller.signal.aborted || sourceId !== item.id) return
       previewCanvas.value = markRaw(canvas)
       renderVersion.value++
       histogram.value = null
     } catch (error) {
+      if (error.name === 'AbortError') return
       ui.setNotice('error', 'Processing failed: ' + error.message, 6000)
     } finally {
-      isRendering.value = false
+      if (renderController === controller) isRendering.value = false
     }
   }
 
@@ -399,7 +425,7 @@ export const useLibraryStore = defineStore('library', () => {
       scheduleRender()
       queueHistoryCommit()
     },
-    { deep: true },
+    { deep: true, flush: 'sync' },
   )
 
   // --- Bearbeiten --------------------------------------------------------
@@ -413,6 +439,11 @@ export const useLibraryStore = defineStore('library', () => {
     const item = activeItem.value
     if (!item) return
     const quarter = Math.round(degrees / 90)
+    if (Math.abs(quarter) % 2) {
+      const horizontal = item.edits.flipH
+      item.edits.flipH = item.edits.flipV
+      item.edits.flipV = horizontal
+    }
     item.edits.rotate = (((item.edits.rotate + quarter * 90) % 360) + 360) % 360
     item.edits.crop = rotateCropRect(item.edits.crop, quarter)
   }
@@ -491,6 +522,7 @@ export const useLibraryStore = defineStore('library', () => {
     }
     for (const entry of items.value) {
       if (entry.id === item.id) continue
+      commitHistory(entry)
       Object.assign(entry.edits, {
         adjustments: { ...shared.adjustments },
         sharpen: shared.sharpen,
@@ -498,60 +530,60 @@ export const useLibraryStore = defineStore('library', () => {
         vignette: shared.vignette,
         resize: { ...shared.resize },
       })
+      commitHistory(entry)
     }
     ui.setNotice('success', 'Applied to ' + (items.value.length - 1) + ' other image(s).')
   }
 
   // --- History -----------------------------------------------------------
-  function queueHistoryCommit() {
-    if (historyTimer) clearTimeout(historyTimer)
-    historyTimer = setTimeout(commitHistory, 350)
-  }
-
   function entryFor(id) {
-    if (!history.has(id)) history.set(id, { undo: [], redo: [] })
+    if (!history.has(id)) {
+      const item = items.value.find(entry => entry.id === id)
+      history.set(id, { undo: [], redo: [], committed: JSON.stringify(item?.edits || createEdits()) })
+    }
     return history.get(id)
   }
-
-  function commitHistory() {
+  function queueHistoryCommit() {
     const item = activeItem.value
-    if (!item) return
-    const serialized = JSON.stringify(item.edits)
-    if (serialized === lastCommitted) return
-    const entry = entryFor(item.id)
-    if (lastCommitted) {
-      entry.undo.push(lastCommitted)
-      if (entry.undo.length > HISTORY_LIMIT) entry.undo.shift()
-      entry.redo = []
-    }
-    lastCommitted = serialized
+    if (!item || restoringHistory) return
+    clearTimeout(historyTimers.get(item.id))
+    historyTimers.set(item.id, setTimeout(() => commitHistory(item), 350))
   }
-
+  function commitHistory(item = activeItem.value) {
+    if (!item) return
+    clearTimeout(historyTimers.get(item.id))
+    historyTimers.delete(item.id)
+    const entry = entryFor(item.id)
+    const serialized = JSON.stringify(item.edits)
+    if (serialized === entry.committed) return
+    entry.undo.push(entry.committed)
+    if (entry.undo.length > HISTORY_LIMIT) entry.undo.shift()
+    entry.redo = []
+    entry.committed = serialized
+  }
   function undo() {
     const item = activeItem.value
     if (!item) return
-    if (historyTimer) {
-      clearTimeout(historyTimer)
-      historyTimer = null
-      commitHistory()
-    }
+    commitHistory(item)
     const entry = entryFor(item.id)
     const previous = entry.undo.pop()
     if (!previous) return
     entry.redo.push(JSON.stringify(item.edits))
-    item.edits = JSON.parse(previous)
-    lastCommitted = previous
+    restoringHistory = true
+    try { item.edits = JSON.parse(previous); entry.committed = previous }
+    finally { restoringHistory = false }
   }
-
   function redo() {
     const item = activeItem.value
     if (!item) return
+    commitHistory(item)
     const entry = entryFor(item.id)
     const next = entry.redo.pop()
     if (!next) return
     entry.undo.push(JSON.stringify(item.edits))
-    item.edits = JSON.parse(next)
-    lastCommitted = next
+    restoringHistory = true
+    try { item.edits = JSON.parse(next); entry.committed = next }
+    finally { restoringHistory = false }
   }
 
   // --- Export ------------------------------------------------------------
@@ -559,114 +591,115 @@ export const useLibraryStore = defineStore('library', () => {
    * Rendert ein Bild in Originalaufloesung. Pixelbasierte Effekte werden dabei
    * hochgerechnet, damit das Ergebnis der Vorschau entspricht.
    */
-  async function renderItemFullSize(item, overrides = {}) {
+  async function renderItemFullSize(item, overrides = {}, mark = watermark.value, signal) {
+    const source = JSON.parse(JSON.stringify({ ...item.edits, ...overrides }))
+    const watermarkSnapshot = JSON.parse(JSON.stringify(mark))
     const canvas = await decodePhoto(item.file, { orientation: item.orientation })
     // Die Vorschau rechnet auf einer verkleinerten Kopie. Pixelbasierte Effekte
     // muessen deshalb um genau diesen Faktor mitwachsen - je Bild, nicht global.
     const viewScale = Math.min(1, VIEW_MAX_SIZE / Math.max(item.width, item.height))
     const factor = viewScale > 0 ? 1 / viewScale : 1
-    const source = { ...item.edits, ...overrides }
     const edits = {
       ...source,
       adjustments: { ...source.adjustments },
-      resize: overrides.resize || source.resize,
+      resize: source.resize,
       blur: source.blur > 0 ? Math.max(1, Math.round(source.blur * factor)) : 0,
     }
-    const result = processPhoto(canvas, edits)
-    if (watermark.value.enabled) applyWatermark(result, watermark.value)
+    const result = await processPhotoAsync(canvas, edits, {}, signal)
+    if (watermarkSnapshot.enabled) applyWatermark(result, watermarkSnapshot)
     return result
   }
 
-  async function saveActiveAs(format = 'png', quality = 92) {
+  async function saveActiveAsImpl(format = 'png', quality = 92) {
     const item = activeItem.value
     if (!item) return
     const config = EXPORT_FORMATS[format] || EXPORT_FORMATS.png
-    const canvas = await renderItemFullSize(item)
+    const canvas = await renderItemFullSize(item, {}, watermark.value, exportController?.signal)
     const blob = await canvasToBlob(canvas, format, quality / 100)
     const fileName = slugify(item.name) + '.' + config.extension
-    const result = await saveBlob(blob, fileName)
+    const result = await saveBlob(blob, fileName, { signal: exportController?.signal })
     if (result.saved) ui.setNotice('success', 'Saved: ' + (result.path || fileName))
   }
 
-  async function copyActiveToClipboard() {
+  async function copyActiveToClipboardImpl() {
     const item = activeItem.value
     if (!item) return
     if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
       ui.setNotice('error', 'This browser does not support the clipboard.')
       return
     }
-    const canvas = await renderItemFullSize(item)
+    const canvas = await renderItemFullSize(item, {}, watermark.value, exportController?.signal)
     const blob = await canvasToBlob(canvas, 'png')
+    exportController?.signal.throwIfAborted()
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
     ui.setNotice('success', 'PNG copied to the clipboard.')
   }
 
-  function buildName(item, index, size, extension) {
-    const base = (batch.value.pattern || '{name}')
-      .replace(/\{name\}/g, item.name.replace(/\.[^.]+$/, ''))
-      .replace(/\{index\}/g, String(index + 1).padStart(3, '0'))
-      .replace(/\{width\}/g, String(size.width))
-      .replace(/\{height\}/g, String(size.height))
-      .replace(/[\\/:*?"<>|]/g, '-')
-      .trim()
-    return (base || 'image-' + (index + 1)) + '.' + extension
+  async function runExport(action) {
+    if (exportBusy.value || batchProgress.value) return
+    exportBusy.value = true
+    exportController = new AbortController()
+    try { return await action() }
+    catch (error) { ui.setNotice(error.name === 'AbortError' ? 'info' : 'error', error.message, 8000) }
+    finally { exportBusy.value = false; exportController = null }
+  }
+  function cancelExport() { exportController?.abort() }
+  function saveActiveAs(...args) { return runExport(() => saveActiveAsImpl(...args)) }
+  function copyActiveToClipboard() { return runExport(copyActiveToClipboardImpl) }
+  function cancelBatch() { batchController?.abort() }
+  async function showActualPixels() {
+    if (!activeItem.value) return
+    const id = activeId.value
+    await select(id, { fullResolution: true })
+    if (activeId.value === id) { zoom.value = 1; fitToView.value = false }
   }
 
-  /** Verarbeitet alle Bilder nacheinander und laedt das Ergebnis als ZIP herunter. */
   async function runBatch() {
-    if (!items.value.length) return
-    const settings = batch.value
+    if (!items.value.length || batchProgress.value || exportBusy.value) return
+    const settings = JSON.parse(JSON.stringify(batch.value))
+    const mark = JSON.parse(JSON.stringify(watermark.value))
+    const snapshot = items.value.map(item => ({ ...item, edits: JSON.parse(JSON.stringify(item.edits)) }))
     const config = EXPORT_FORMATS[settings.format] || EXPORT_FORMATS.png
-    const files = []
     const used = new Set()
-
-    batchProgress.value = { done: 0, total: items.value.length, label: '' }
-
+    const controller = new AbortController()
+    batchController = controller
+    let session = null
+    batchProgress.value = { done: 0, total: snapshot.length, label: 'Choose output location' }
     try {
-      for (let index = 0; index < items.value.length; index++) {
-        const item = items.value[index]
-        batchProgress.value = { done: index, total: items.value.length, label: item.name }
-
-        const edits = settings.applyEdits
-          ? { ...item.edits, resize: settings.resize }
-          : { ...createEdits(), resize: settings.resize }
-
-        const canvas = await renderItemFullSize(item, { ...edits, resize: settings.resize })
+      session = await beginFileSet({ zipName: 'images-' + snapshot.length + '.zip' })
+      if (!session) { ui.setNotice('info', 'Export canceled.'); return }
+      for (let index = 0; index < snapshot.length; index++) {
+        if (controller.signal.aborted) throw new DOMException('Export canceled.', 'AbortError')
+        const item = snapshot[index]
+        batchProgress.value = { done: index, total: snapshot.length, label: item.name }
+        const edits = settings.applyEdits ? item.edits : createEdits()
+        const canvas = await renderItemFullSize(item, { ...edits, resize: settings.resize }, mark, controller.signal)
         const blob = await canvasToBlob(canvas, settings.format, settings.quality / 100)
-
-        let name = buildName(item, index, { width: canvas.width, height: canvas.height }, config.extension)
-        // Doppelte Namen wuerden sich im ZIP gegenseitig ueberschreiben.
-        if (used.has(name)) {
-          const dot = name.lastIndexOf('.')
-          name = name.slice(0, dot) + '-' + (index + 1) + name.slice(dot)
-        }
-        used.add(name)
-        files.push({ name, blob })
-
-        // Dem Browser Luft zum Aufraeumen geben.
-        await new Promise((resolve) => setTimeout(resolve, 0))
+        if (controller.signal.aborted) throw new DOMException('Export canceled.', 'AbortError')
+        const name = uniqueExportName(exportName(settings.pattern, item, index, canvas, config.extension), used)
+        await session.write({ name, blob })
+        canvas.width = 1; canvas.height = 1
+        batchProgress.value = { done: index + 1, total: snapshot.length, label: item.name }
+        await new Promise(resolve => setTimeout(resolve, 0))
       }
-
-      const result = await saveFileSet(files, { zipName: 'images-' + files.length + '.zip' })
-      if (result.mode === 'canceled') {
-        ui.setNotice('info', 'Export cancelled.')
-      } else {
-        ui.setNotice(
-          'success',
-          result.count + ' image(s) exported' + (result.path ? ' to ' + result.path : '.'),
-        )
-      }
+      const result = await session.finish()
+      ui.setNotice('success', result.count + ' image(s) exported' + (result.path ? ' to ' + result.path : '.'))
     } catch (error) {
-      ui.setNotice('error', 'Batch export failed: ' + error.message, 8000)
-    } finally {
-      batchProgress.value = null
-    }
+      let suffix = ''
+      if (session) {
+        try {
+          const result = await session.finish({ canceled: true })
+          if (result.path) suffix = ' Completed files kept in: ' + result.path
+        } catch (finishError) { suffix = ' Export cleanup failed: ' + finishError.message }
+      }
+      ui.setNotice(error.name === 'AbortError' ? 'info' : 'error', error.message + suffix, 10000)
+    } finally { batchProgress.value = null; batchController = null }
   }
 
   /** Geschaetzte Ausgabegroesse eines Bildes mit den aktuellen Stapel-Einstellungen. */
   function batchTargetSize(item) {
     const geometry = previewGeometry(item.width, item.height, {
-      ...item.edits,
+      ...(batch.value.applyEdits ? item.edits : createEdits()),
       resize: { mode: 'none', value: 0 },
     })
     return resolveTargetSize(geometry.width, geometry.height, batch.value.resize)
@@ -674,6 +707,14 @@ export const useLibraryStore = defineStore('library', () => {
 
   return {
     // State
+    exportBusy,
+    sourceLimit,
+    showActualPixels,
+    isDirty,
+    hasPendingWork,
+    cancelBatch,
+    cancelExport,
+    cancelImport,
     items,
     activeId,
     sourceCanvas,

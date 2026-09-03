@@ -183,8 +183,8 @@ export function processPhoto(source, edits, options = {}) {
     )
     const ctx = target.getContext('2d')
     ctx.translate(target.width / 2, target.height / 2)
-    ctx.rotate((quarter * 90 * Math.PI) / 180)
     ctx.scale(edits.flipH ? -1 : 1, edits.flipV ? -1 : 1)
+    ctx.rotate((quarter * 90 * Math.PI) / 180)
     ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2)
     canvas = target
   }

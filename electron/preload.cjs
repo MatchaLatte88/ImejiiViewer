@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 /**
  * Schmale, klar umrissene Bruecke in den Main-Prozess. Der Renderer bekommt
@@ -11,7 +11,13 @@ contextBridge.exposeInMainWorld('desktopApi', {
 
   saveFile: (payload) => ipcRenderer.invoke('dialog:saveFile', payload),
 
-  selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
+  selectFolder: (name) => ipcRenderer.invoke('dialog:selectFolder', name),
+  finishFileSet: (token) => ipcRenderer.invoke('file:finishSet', token),
+  confirmDiscard: (message) => ipcRenderer.invoke('dialog:confirmDiscard', message),
+  adoptFile: (file) => {
+    const filePath = webUtils.getPathForFile(file)
+    return filePath ? ipcRenderer.invoke('files:adopt', filePath) : Promise.resolve({ files: [], error: null })
+  },
 
   writeInto: (payload) => ipcRenderer.invoke('file:writeInto', payload),
 

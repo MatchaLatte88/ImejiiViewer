@@ -11,7 +11,7 @@ const store = useLibraryStore()
 
 const edits = computed(() => store.activeItem?.edits || createEdits())
 const adjust = computed(() => edits.value.adjustments)
-const disabled = computed(() => !store.activeItem)
+const disabled = computed(() => !store.activeItem || store.isDecoding)
 
 const LOOKS = [
   { id: 'neutral', label: 'Neutral', values: {} },

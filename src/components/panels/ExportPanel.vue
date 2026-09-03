@@ -1,4 +1,5 @@
 <script setup>
+import { isDesktop } from '../../lib/desktop.js'
 import { computed, ref } from 'vue'
 import { useEditorStore } from '../../stores/editor.js'
 import { EXPORT_FORMATS, formatBytes } from '../../lib/exportImage.js'
@@ -27,7 +28,7 @@ const formatOptions = Object.entries(EXPORT_FORMATS).map(([value, config]) => ({
 }))
 
 const needsQuality = computed(() => format.value !== 'png')
-const disabled = computed(() => !store.hasImage || busy.value !== '')
+const disabled = computed(() => !store.hasImage || store.isLoading || store.exportBusy || busy.value !== '')
 
 /** JPG has no transparency - the background color from the shape section is used instead. */
 const background = computed(() => store.settings.transform.background)
@@ -75,6 +76,7 @@ const { bytes: estimatedBytes } = useEstimatedSize(
 
 <template>
   <aside class="export">
+    <AppButton v-if="store.exportBusy" @click="store.cancelExport()">Cancel export</AppButton>
     <section class="panel-section">
       <div class="section-title"><span>Preview</span></div>
       <div class="preview-row">
@@ -92,6 +94,7 @@ const { bytes: estimatedBytes } = useEstimatedSize(
     </section>
 
     <section class="panel-section">
+      <p class="hint">Icon bundles always use PNG/ICO. Desktop sets go into a new subfolder; browser sets download as ZIP.</p>
       <div class="section-title"><span>Format</span></div>
       <div class="stack">
         <SegmentedControl v-model="format" :options="formatOptions" />
@@ -141,7 +144,7 @@ const { bytes: estimatedBytes } = useEstimatedSize(
             )
           "
         >
-          {{ selectedSizes.length > 1 ? selectedSizes.length + ' sizes as ZIP' : 'Export size' }}
+          {{ selectedSizes.length > 1 ? selectedSizes.length + (isDesktop ? ' sizes to folder' : ' sizes as ZIP') : 'Export size' }}
         </AppButton>
         <AppButton
           icon="image"

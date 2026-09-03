@@ -1,0 +1,11 @@
+// Starts the unchanged desktop entrypoint with an isolated temporary profile.
+const { app } = require('electron')
+const fs = require('node:fs')
+const path = require('node:path')
+const os = require('node:os')
+const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'imejii-ui-audit-'))
+app.setPath('userData', scratch)
+app.setPath('sessionData', scratch)
+app.setName('Imejii UI Audit')
+process.argv.push(path.join(__dirname, 'fixture.svg'))
+require('../../electron/main.cjs')

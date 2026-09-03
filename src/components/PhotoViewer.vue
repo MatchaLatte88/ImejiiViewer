@@ -99,6 +99,8 @@ watch(
 watch(
   () => store.activeId,
   () => {
+    endCropDrag()
+    endSliderDrag()
     offset.value = { x: 0, y: 0 }
     sliderPos.value = 50
   },
@@ -139,6 +141,9 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  endCropDrag()
+  endSliderDrag()
+  store.showOriginal = false
   resizeObserver?.disconnect()
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   if (idleTimer) clearTimeout(idleTimer)
@@ -541,8 +546,8 @@ defineExpose({ resetView, zoomBy, setZoom, toggleFullscreen, toggleSlideshow })
     <footer class="bar" @pointerenter="revealChrome" @pointerleave="hideChromeLater">
       <div class="bar__group">
         <AppButton icon="zoomOut" variant="ghost" size="sm" title="Zoom out" @click="zoomBy(1 / 1.25)" />
-        <button type="button" class="bar__zoom mono" title="Set to 100%" @click="setZoom(1)">
-          {{ Math.round(scale * 100) }} %
+        <button type="button" class="bar__zoom mono" title="Load original-resolution detail and show actual pixels" :disabled="store.isDecoding" @click="store.showActualPixels()">
+          {{ store.sourceLimit && Math.max(store.activeItem?.width || 0, store.activeItem?.height || 0) > store.sourceLimit ? 'Preview ' : '' }}{{ Math.round(scale * 100) }} %
         </button>
         <AppButton icon="zoomIn" variant="ghost" size="sm" title="Zoom in" @click="zoomBy(1.25)" />
         <AppButton

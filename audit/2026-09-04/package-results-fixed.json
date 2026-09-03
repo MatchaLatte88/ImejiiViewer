@@ -1,0 +1,32 @@
+{
+  "status": "PASS",
+  "entries": [
+    "/dist",
+    "/dist/assets",
+    "/dist/assets/index-22c-tTq5.css",
+    "/dist/assets/index-yjK-3Dv9.js",
+    "/dist/assets/jszip.min-D7KnG0-e.js",
+    "/dist/assets/photoWorker-cpxuwNhD.js",
+    "/dist/index.html",
+    "/dist/theme-init.js",
+    "/electron",
+    "/electron/file-access.cjs",
+    "/electron/main.cjs",
+    "/electron/preload.cjs",
+    "/electron/security.cjs",
+    "/package.json"
+  ],
+  "fuses": {
+    "RunAsNode": false,
+    "EnableCookieEncryption": true,
+    "EnableNodeOptionsEnvironmentVariable": false,
+    "EnableNodeCliInspectArguments": false,
+    "EnableEmbeddedAsarIntegrityValidation": true,
+    "OnlyLoadAppFromAsar": true,
+    "GrantFileProtocolExtraPrivileges": false
+  },
+  "sha256": {
+    "exe": "c70b2c1fbd3e1092ee33c4354f04dfebdc2988aee9d751962586009c47fd2210",
+    "asar": "46f70fdc3f74cdbed41d3f58081c2713340df50ffd427d5732546a1724d9f159"
+  }
+}

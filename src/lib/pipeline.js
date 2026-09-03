@@ -24,11 +24,25 @@ export const DEFAULT_SETTINGS = {
 
 /** Tiefe Kopie der Einstellungen (fuer History-Snapshots). */
 export function cloneSettings(settings) {
+  const group = (name) => Object.fromEntries(Object.entries(DEFAULT_SETTINGS[name]).map(([key, fallback]) => {
+    const value = settings?.[name]?.[key]
+    if (typeof fallback === 'number') return [key, Number.isFinite(value) ? Math.max(-4096, Math.min(4096, value)) : fallback]
+    if (typeof fallback === 'boolean') return [key, typeof value === 'boolean' ? value : fallback]
+    if (fallback === null) return [key, typeof value === 'string' && hexToRgb(value) ? value : null]
+    return [key, typeof value === typeof fallback ? value : fallback]
+  }))
+  const keying = group('keying')
+  keying.keys = (Array.isArray(settings?.keying?.keys) ? settings.keying.keys : []).slice(0, 100)
+    .filter(key => typeof key?.hex === 'string' && hexToRgb(key.hex))
+    .map(key => ({ hex: key.hex, ...hexToRgb(key.hex) }))
+  keying.seeds = (Array.isArray(settings?.keying?.seeds) ? settings.keying.seeds : []).slice(0, 1000)
+    .filter(seed => Number.isFinite(seed?.x) && Number.isFinite(seed?.y) && seed.x >= 0 && seed.y >= 0)
+    .map(seed => ({ x: Math.min(16383, seed.x), y: Math.min(16383, seed.y) }))
   return {
-    keying: { ...settings.keying, keys: settings.keying.keys.map((k) => ({ ...k })), seeds: settings.keying.seeds.map((s) => ({ ...s })) },
-    adjustments: { ...settings.adjustments },
-    effects: { ...settings.effects },
-    transform: { ...settings.transform },
+    keying,
+    adjustments: group('adjustments'),
+    effects: group('effects'),
+    transform: group('transform'),
   }
 }
 

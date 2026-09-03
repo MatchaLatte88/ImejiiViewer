@@ -20,6 +20,8 @@ const emit = defineEmits(['update:modelValue'])
       :class="{ 'is-active': option.value === modelValue }"
       :title="option.title || option.label"
       :aria-pressed="option.value === modelValue"
+      :disabled="disabled"
+      :aria-label="option.title || option.label"
       @click="emit('update:modelValue', option.value)"
     >
       <AppIcon v-if="option.icon" :name="option.icon" :size="14" />

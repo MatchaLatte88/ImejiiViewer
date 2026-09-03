@@ -1,0 +1,40 @@
+// Windows x64 is the initial target. This config never publishes automatically.
+module.exports = {
+  appId: 'io.imejii.viewer',
+  productName: 'Imejii',
+  directories: { output: 'release', buildResources: 'build' },
+  files: ['dist/**/*', 'electron/**/*.cjs', 'package.json', '!node_modules/**'],
+  extraResources: [{ from: 'build/THIRD_PARTY_NOTICES.txt', to: 'THIRD_PARTY_NOTICES.txt' }],
+  asar: true,
+  npmRebuild: false,
+  electronFuses: {
+    runAsNode: false,
+    enableCookieEncryption: true,
+    enableNodeOptionsEnvironmentVariable: false,
+    enableNodeCliInspectArguments: false,
+    enableEmbeddedAsarIntegrityValidation: true,
+    onlyLoadAppFromAsar: true,
+    grantFileProtocolExtraPrivileges: false,
+  },
+  win: {
+    target: [{ target: 'nsis', arch: ['x64'] }],
+    icon: 'build/icon.ico',
+    requestedExecutionLevel: 'asInvoker',
+  },
+  nsis: {
+    oneClick: false,
+    perMachine: false,
+    allowElevation: false,
+    allowToChangeInstallationDirectory: true,
+    createDesktopShortcut: false,
+    runAfterFinish: false,
+    deleteAppDataOnUninstall: false,
+  },
+  fileAssociations: [{
+    ext: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'svg', 'ico'],
+    name: 'Imejii.Image',
+    description: 'View or edit with Imejii',
+    role: 'Viewer',
+  }],
+  publish: null,
+}

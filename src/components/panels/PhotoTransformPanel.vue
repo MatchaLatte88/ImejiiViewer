@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useLibraryStore } from '../../stores/library.js'
-import { createEdits, resolveTargetSize } from '../../lib/photoPipeline.js'
+import { createEdits, previewGeometry } from '../../lib/photoPipeline.js'
 import SliderControl from '../ui/SliderControl.vue'
 import SegmentedControl from '../ui/SegmentedControl.vue'
 import AppButton from '../ui/AppButton.vue'
@@ -9,7 +9,7 @@ import AppButton from '../ui/AppButton.vue'
 const store = useLibraryStore()
 
 const edits = computed(() => store.activeItem?.edits || createEdits())
-const disabled = computed(() => !store.activeItem)
+const disabled = computed(() => !store.activeItem || store.isDecoding)
 
 const ASPECTS = [
   { value: null, label: 'Free' },
@@ -39,9 +39,7 @@ const RESIZE_MODES = [
 const croppedSize = computed(() => {
   const item = store.activeItem
   if (!item) return null
-  const geometry = store.outputSize
-  if (!geometry) return null
-  return resolveTargetSize(geometry.width, geometry.height, { mode: 'none' })
+  return previewGeometry(item.width, item.height, { ...item.edits, resize: { mode: 'none' } })
 })
 
 const targetSize = computed(() => store.outputSize)
@@ -50,7 +48,7 @@ const isUpscaling = computed(() => {
   const item = store.activeItem
   const target = targetSize.value
   if (!item || !target) return false
-  return target.width > item.width || target.height > item.height
+  return target.width > croppedSize.value.width || target.height > croppedSize.value.height
 })
 
 const resizeUnit = computed(() => (edits.value.resize.mode === 'percent' ? '%' : 'px'))

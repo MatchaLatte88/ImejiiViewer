@@ -19,63 +19,40 @@ export function applyBlur(imageData, radius) {
 
   const { data, width, height } = imageData
   const pixelCount = width * height
-  const channels = 4
-  let src = new Float32Array(pixelCount * channels)
-  let dst = new Float32Array(pixelCount * channels)
-
-  for (let p = 0, i = 0; p < pixelCount; p++, i += 4) {
-    const a = data[i + 3] / 255
-    src[i] = data[i] * a
-    src[i + 1] = data[i + 1] * a
-    src[i + 2] = data[i + 2] * a
-    src[i + 3] = data[i + 3]
-  }
-
-  // Zwei Durchgaenge naehern eine Gauss-Verteilung an.
-  for (let pass = 0; pass < 2; pass++) {
-    blurPassHorizontal(src, dst, width, height, r)
-    blurPassVertical(dst, src, width, height, r)
-  }
-
-  for (let p = 0, i = 0; p < pixelCount; p++, i += 4) {
-    const alpha = src[i + 3]
-    const a = alpha / 255
-    data[i + 3] = clamp255(alpha)
-    if (a > 0.0039) {
-      data[i] = clamp255(src[i] / a)
-      data[i + 1] = clamp255(src[i + 1] / a)
-      data[i + 2] = clamp255(src[i + 2] / a)
+  // Process one channel at a time: 12 bytes/pixel scratch instead of 32.
+  const src = new Float32Array(pixelCount)
+  const dst = new Float32Array(pixelCount)
+  const alpha = new Float32Array(pixelCount)
+  const run = () => {
+    for (let pass = 0; pass < 2; pass++) {
+      blurPass(src, dst, width, height, r, false)
+      blurPass(dst, src, width, height, r, true)
     }
   }
-}
-
-function blurPassHorizontal(src, dst, width, height, radius) {
-  const window = radius * 2 + 1
-  for (let y = 0; y < height; y++) {
-    const row = y * width
-    for (let c = 0; c < 4; c++) {
-      let sum = src[row * 4 + c] * (radius + 1)
-      for (let x = 1; x <= radius; x++) sum += src[(row + Math.min(x, width - 1)) * 4 + c]
-      for (let x = 0; x < width; x++) {
-        dst[(row + x) * 4 + c] = sum / window
-        sum += src[(row + Math.min(x + radius + 1, width - 1)) * 4 + c]
-        sum -= src[(row + Math.max(x - radius, 0)) * 4 + c]
-      }
-    }
+  for (let p = 0; p < pixelCount; p++) src[p] = data[p * 4 + 3]
+  run()
+  alpha.set(src)
+  for (let c = 0; c < 3; c++) {
+    for (let p = 0; p < pixelCount; p++) src[p] = data[p * 4 + c] * data[p * 4 + 3] / 255
+    run()
+    for (let p = 0; p < pixelCount; p++) data[p * 4 + c] = alpha[p] > 0.9945 ? clamp255(src[p] * 255 / alpha[p]) : 0
   }
+  for (let p = 0; p < pixelCount; p++) data[p * 4 + 3] = clamp255(alpha[p])
 }
 
-function blurPassVertical(src, dst, width, height, radius) {
-  const window = radius * 2 + 1
-  for (let x = 0; x < width; x++) {
-    for (let c = 0; c < 4; c++) {
-      let sum = src[x * 4 + c] * (radius + 1)
-      for (let y = 1; y <= radius; y++) sum += src[(Math.min(y, height - 1) * width + x) * 4 + c]
-      for (let y = 0; y < height; y++) {
-        dst[(y * width + x) * 4 + c] = sum / window
-        sum += src[(Math.min(y + radius + 1, height - 1) * width + x) * 4 + c]
-        sum -= src[(Math.max(y - radius, 0) * width + x) * 4 + c]
-      }
+function blurPass(src, dst, width, height, radius, vertical) {
+  const length = vertical ? height : width
+  const lines = vertical ? width : height
+  const stride = vertical ? width : 1
+  const windowSize = radius * 2 + 1
+  for (let line = 0; line < lines; line++) {
+    const base = vertical ? line : line * width
+    let sum = src[base] * (radius + 1)
+    for (let k = 1; k <= radius; k++) sum += src[base + Math.min(k, length - 1) * stride]
+    for (let k = 0; k < length; k++) {
+      dst[base + k * stride] = sum / windowSize
+      sum += src[base + Math.min(k + radius + 1, length - 1) * stride]
+      sum -= src[base + Math.max(k - radius, 0) * stride]
     }
   }
 }
