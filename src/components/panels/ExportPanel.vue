@@ -1,7 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useEditorStore } from '../../stores/editor.js'
-import { EXPORT_FORMATS } from '../../lib/exportImage.js'
+import { EXPORT_FORMATS, formatBytes } from '../../lib/exportImage.js'
+import { useEstimatedSize } from '../../composables/useEstimatedSize.js'
 import { DEFAULT_ICO_SIZES } from '../../lib/ico.js'
 import { EXPORT_PRESETS, QUICK_SIZES } from '../../lib/presets.js'
 import SliderControl from '../ui/SliderControl.vue'
@@ -9,6 +10,7 @@ import SegmentedControl from '../ui/SegmentedControl.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import IconPreview from '../IconPreview.vue'
+import IconContextPreview from '../IconContextPreview.vue'
 
 const store = useEditorStore()
 
@@ -27,7 +29,7 @@ const formatOptions = Object.entries(EXPORT_FORMATS).map(([value, config]) => ({
 const needsQuality = computed(() => format.value !== 'png')
 const disabled = computed(() => !store.hasImage || busy.value !== '')
 
-/** JPG kennt keine Transparenz - dann greift die Hintergrundfarbe aus der Form-Sektion. */
+/** JPG has no transparency - the background color from the shape section is used instead. */
 const background = computed(() => store.settings.transform.background)
 const alphaWarning = computed(
   () => format.value === 'jpeg' && !background.value,
@@ -51,7 +53,7 @@ async function run(key, action) {
   try {
     await action()
   } catch (error) {
-    store.setNotice('error', 'Export fehlgeschlagen: ' + error.message, 7000)
+    store.setNotice('error', 'Export failed: ' + error.message, 7000)
   } finally {
     busy.value = ''
   }
@@ -62,19 +64,31 @@ const exportOptions = computed(() => ({
   quality: quality.value / 100,
   background: background.value,
 }))
+
+const { bytes: estimatedBytes } = useEstimatedSize(
+  () => store.previewCanvas,
+  () => format.value,
+  () => quality.value,
+  [() => store.renderVersion],
+)
 </script>
 
 <template>
   <aside class="export">
     <section class="panel-section">
-      <div class="section-title"><span>Vorschau</span></div>
+      <div class="section-title"><span>Preview</span></div>
       <div class="preview-row">
         <IconPreview :size="16" />
         <IconPreview :size="32" />
         <IconPreview :size="48" />
         <IconPreview :size="64" />
       </div>
-      <p class="hint">So wirkt das Ergebnis in echter Icon-Groesse.</p>
+      <p class="hint">This is how the result looks at real icon size.</p>
+    </section>
+
+    <section class="panel-section">
+      <div class="section-title"><span>In context</span></div>
+      <IconContextPreview />
     </section>
 
     <section class="panel-section">
@@ -84,7 +98,7 @@ const exportOptions = computed(() => ({
         <SliderControl
           v-if="needsQuality"
           v-model="quality"
-          label="Qualitaet"
+          label="Quality"
           unit="%"
           :min="30"
           :max="100"
@@ -92,14 +106,17 @@ const exportOptions = computed(() => ({
         />
         <p v-if="alphaWarning" class="hint hint--warn">
           <AppIcon name="alert" :size="12" />
-          JPG speichert keine Transparenz. Ohne eigene Hintergrundfarbe (Reiter <b>Form</b>)
-          werden transparente Bereiche weiss gefuellt.
+          JPG cannot store transparency. Without a background color (tab <b>Shape</b>)
+          transparent areas are filled with white.
+        </p>
+        <p v-if="estimatedBytes != null" class="hint">
+          ~{{ formatBytes(estimatedBytes) }} estimated (preview resolution)
         </p>
       </div>
     </section>
 
     <section class="panel-section">
-      <div class="section-title"><span>Groessen</span></div>
+      <div class="section-title"><span>Sizes</span></div>
       <div class="chips">
         <button
           v-for="size in QUICK_SIZES"
@@ -124,7 +141,7 @@ const exportOptions = computed(() => ({
             )
           "
         >
-          {{ selectedSizes.length > 1 ? selectedSizes.length + ' Groessen als ZIP' : 'Groesse exportieren' }}
+          {{ selectedSizes.length > 1 ? selectedSizes.length + ' sizes as ZIP' : 'Export size' }}
         </AppButton>
         <AppButton
           icon="image"
@@ -132,7 +149,7 @@ const exportOptions = computed(() => ({
           :disabled="disabled"
           @click="run('full', () => store.exportSingle(exportOptions))"
         >
-          In Originalgroesse exportieren
+          Export at original size
         </AppButton>
         <AppButton
           icon="copy"
@@ -140,13 +157,13 @@ const exportOptions = computed(() => ({
           :disabled="disabled"
           @click="run('clip', () => store.copyToClipboard())"
         >
-          PNG in Zwischenablage
+          Copy PNG to clipboard
         </AppButton>
       </div>
     </section>
 
     <section class="panel-section">
-      <div class="section-title"><span>Windows-Icon (.ico)</span></div>
+      <div class="section-title"><span>Windows icon (.ico)</span></div>
       <div class="chips">
         <button
           v-for="size in DEFAULT_ICO_SIZES"
@@ -166,15 +183,15 @@ const exportOptions = computed(() => ({
         :disabled="disabled || !icoSizes.length"
         @click="run('ico', () => store.exportIco([...icoSizes].sort((a, b) => a - b)))"
       >
-        .ico mit {{ icoSizes.length }} Groessen
+        .ico with {{ icoSizes.length }} sizes
       </AppButton>
       <p class="hint" style="margin-top: var(--space-2)">
-        Enthaelt alle gewaehlten Aufloesungen in einer Datei - Windows waehlt selbst die passende.
+        Contains every selected resolution in one file - Windows picks the matching one.
       </p>
     </section>
 
     <section class="panel-section">
-      <div class="section-title"><span>Fertige Pakete</span></div>
+      <div class="section-title"><span>Ready-made bundles</span></div>
       <ul class="presets">
         <li v-for="preset in EXPORT_PRESETS" :key="preset.id">
           <button
@@ -194,14 +211,14 @@ const exportOptions = computed(() => ({
     </section>
 
     <section class="panel-section">
-      <div class="section-title"><span>Eigene Einstellungs-Presets</span></div>
+      <div class="section-title"><span>Your own presets</span></div>
       <div class="stack">
         <div class="save-row">
           <input
             v-model="presetName"
             class="save-row__input"
             type="text"
-            placeholder="z. B. Produktlogo hell"
+            placeholder="e.g. product logo light"
             @keyup.enter="
               () => {
                 store.savePreset(presetName)
@@ -211,7 +228,7 @@ const exportOptions = computed(() => ({
           />
           <AppButton
             icon="save"
-            title="Aktuelle Einstellungen speichern"
+            title="Save current settings"
             @click="
               () => {
                 store.savePreset(presetName)
@@ -221,8 +238,8 @@ const exportOptions = computed(() => ({
           />
         </div>
         <p v-if="!store.savedPresets.length" class="hint">
-          Gespeicherte Einstellungen lassen sich auf weitere Bilder anwenden - praktisch fuer
-          einheitliche Produktlogos.
+          Saved settings can be applied to other images - handy for a consistent
+          product family.
         </p>
         <ul v-else class="saved">
           <li v-for="preset in store.savedPresets" :key="preset.id">
@@ -234,7 +251,7 @@ const exportOptions = computed(() => ({
               icon="trash"
               variant="danger"
               size="sm"
-              title="Preset loeschen"
+              title="Delete preset"
               @click="store.deleteSavedPreset(preset.id)"
             />
           </li>
@@ -293,7 +310,7 @@ const exportOptions = computed(() => ({
 .chip.is-active {
   background: var(--accent-soft);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .presets {

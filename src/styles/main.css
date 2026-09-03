@@ -4,11 +4,15 @@
    ========================================================================== */
 
 :root {
-  --accent-h: 245;
-  --accent: hsl(var(--accent-h) 75% 60%);
-  --accent-strong: hsl(var(--accent-h) 75% 52%);
-  --accent-soft: hsl(var(--accent-h) 75% 60% / 0.14);
-  --accent-contrast: #fff;
+  /* Gelber Akzent. --accent traegt Flaechen und Rahmen, --accent-text alles,
+     was als Schrift oder Icon auf normalem Untergrund steht: reines Gelb
+     erreicht dort im hellen Design keinen ausreichenden Kontrast. */
+  --accent-h: 43;
+  --accent: hsl(var(--accent-h) 92% 52%);
+  --accent-strong: hsl(var(--accent-h) 92% 44%);
+  --accent-soft: hsl(var(--accent-h) 92% 52% / 0.16);
+  --accent-text: hsl(38 88% 30%);
+  --accent-contrast: #231900;
 
   --danger: #ef4444;
   --danger-soft: rgb(239 68 68 / 0.14);
@@ -37,6 +41,12 @@
 }
 
 [data-theme='dark'] {
+  --accent: hsl(var(--accent-h) 95% 56%);
+  --accent-strong: hsl(var(--accent-h) 95% 48%);
+  --accent-soft: hsl(var(--accent-h) 95% 56% / 0.15);
+  --accent-text: hsl(var(--accent-h) 95% 62%);
+  --accent-contrast: #1a1200;
+
   --bg: #0d0f14;
   --bg-elevated: #14171f;
   --bg-panel: #11141b;
@@ -63,6 +73,11 @@
 }
 
 [data-theme='light'] {
+  --accent: hsl(41 92% 47%);
+  --accent-strong: hsl(41 92% 40%);
+  --accent-soft: hsl(var(--accent-h) 92% 52% / 0.18);
+  --accent-text: hsl(38 88% 30%);
+
   --bg: #f4f5f8;
   --bg-elevated: #ffffff;
   --bg-panel: #ffffff;
@@ -160,7 +175,7 @@ select {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 

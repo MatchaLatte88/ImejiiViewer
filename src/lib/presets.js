@@ -6,8 +6,8 @@
 export const EXPORT_PRESETS = [
   {
     id: 'favicon',
-    name: 'Favicon-Paket',
-    description: 'favicon.ico, PNGs, Apple-Touch-Icon und Web-Manifest fuer Websites.',
+    name: 'Favicon bundle',
+    description: 'favicon.ico, PNGs, apple-touch-icon and web manifest for websites.',
     pngs: [
       { size: 16, name: 'favicon-16x16.png' },
       { size: 32, name: 'favicon-32x32.png' },
@@ -38,10 +38,10 @@ export const EXPORT_PRESETS = [
           ),
       },
       {
-        name: 'einbinden.html',
+        name: 'usage.html',
         build: () =>
           [
-            '<!-- In den <head> der Seite einfuegen -->',
+            '<!-- Add this to the <head> of your page -->',
             '<link rel="icon" href="/favicon.ico" sizes="any">',
             '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">',
             '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">',
@@ -53,8 +53,8 @@ export const EXPORT_PRESETS = [
   },
   {
     id: 'pwa',
-    name: 'PWA / Web-App',
-    description: 'Alle Icon-Groessen fuer installierbare Web-Apps.',
+    name: 'PWA / web app',
+    description: 'Every icon size for installable web apps.',
     pngs: [72, 96, 128, 144, 152, 192, 256, 384, 512].map((size) => ({
       size,
       name: 'icon-' + size + 'x' + size + '.png',
@@ -62,15 +62,15 @@ export const EXPORT_PRESETS = [
   },
   {
     id: 'windows',
-    name: 'Windows-Programm',
-    description: 'Multi-Resolution .ico fuer Desktop-Anwendungen und Verknuepfungen.',
+    name: 'Windows application',
+    description: 'Multi-resolution .ico for desktop applications and shortcuts.',
     pngs: [{ size: 256, name: 'app-256x256.png' }],
     ico: { name: 'app.ico', sizes: [16, 24, 32, 48, 64, 128, 256] },
   },
   {
     id: 'macos',
-    name: 'macOS Iconset',
-    description: 'Groessen fuer .icns (Ordner spaeter mit iconutil umwandeln).',
+    name: 'macOS iconset',
+    description: 'Sizes for .icns - convert the folder later with iconutil.',
     pngs: [
       { size: 16, name: 'icon_16x16.png' },
       { size: 32, name: 'icon_16x16@2x.png' },
@@ -87,7 +87,7 @@ export const EXPORT_PRESETS = [
   {
     id: 'android',
     name: 'Android (mipmap)',
-    description: 'Launcher-Icons von mdpi bis xxxhdpi.',
+    description: 'Launcher icons from mdpi to xxxhdpi.',
     pngs: [
       { size: 48, name: 'mipmap-mdpi/ic_launcher.png' },
       { size: 72, name: 'mipmap-hdpi/ic_launcher.png' },
@@ -99,8 +99,8 @@ export const EXPORT_PRESETS = [
   },
   {
     id: 'ios',
-    name: 'iOS App-Icon',
-    description: 'Alle von Xcode erwarteten Kantenlaengen.',
+    name: 'iOS app icon',
+    description: 'Every edge length Xcode expects.',
     pngs: [20, 29, 40, 58, 60, 76, 80, 87, 120, 152, 167, 180, 1024].map((size) => ({
       size,
       name: 'Icon-' + size + '.png',
@@ -108,8 +108,8 @@ export const EXPORT_PRESETS = [
   },
   {
     id: 'logo-web',
-    name: 'Web-Logo',
-    description: 'Grosse PNGs fuer Websites, Praesentationen und Druckvorlagen.',
+    name: 'Web logo',
+    description: 'Large PNGs for websites, presentations and print templates.',
     pngs: [
       { size: 256, name: 'logo-256.png' },
       { size: 512, name: 'logo-512.png' },

@@ -107,7 +107,7 @@ defineProps({
 .btn.is-active {
   background: var(--accent-soft);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .btn__label {

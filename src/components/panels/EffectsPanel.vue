@@ -17,50 +17,50 @@ function resetEffects() {
   <div class="panel">
     <section class="panel-section">
       <div class="section-title">
-        <span>Schaerfe &amp; Weichzeichnung</span>
-        <button type="button" class="link-btn" @click="resetEffects">zuruecksetzen</button>
+        <span>Sharpness &amp; blur</span>
+        <button type="button" class="link-btn" @click="resetEffects">reset</button>
       </div>
       <div class="stack">
         <SliderControl
           v-model="effects.sharpen"
-          label="Schaerfen"
+          label="Sharpen"
           unit="%"
           :min="0"
           :max="100"
-          hint="Hilft bei weichen Scans und JPEG-Vorlagen"
+          hint="Helps with soft scans and JPEG sources"
         />
-        <SliderControl v-model="effects.blur" label="Weichzeichnen" unit="px" :min="0" :max="20" />
+        <SliderControl v-model="effects.blur" label="Blur" unit="px" :min="0" :max="20" />
       </div>
     </section>
 
     <section class="panel-section">
-      <div class="section-title"><span>Farbreduktion</span></div>
+      <div class="section-title"><span>Color reduction</span></div>
       <SliderControl
         v-model="effects.posterize"
-        label="Farbstufen"
+        label="Color levels"
         :min="0"
         :max="32"
         :reset-value="0"
-        hint="0 = aus. Wenige Stufen erzeugen flache, druckfreundliche Flaechen."
+        hint="0 = off. Few levels create flat, print-friendly areas."
       />
     </section>
 
     <section class="panel-section">
-      <div class="section-title"><span>Kontur</span></div>
+      <div class="section-title"><span>Outline</span></div>
       <div class="stack">
         <SliderControl
           v-model="effects.outlineWidth"
-          label="Staerke"
+          label="Width"
           unit="px"
           :min="0"
           :max="40"
           :reset-value="0"
-          hint="Legt eine Umrandung um die freigestellte Silhouette"
+          hint="Draws a border around the cut-out silhouette"
         />
-        <ColorField v-model="effects.outlineColor" label="Konturfarbe" />
+        <ColorField v-model="effects.outlineColor" label="Outline color" />
         <SliderControl
           v-model="effects.outlineOpacity"
-          label="Deckkraft"
+          label="Opacity"
           unit="%"
           :min="0"
           :max="100"
@@ -68,8 +68,7 @@ function resetEffects() {
           :disabled="effects.outlineWidth === 0"
         />
         <p v-if="effects.outlineWidth > 0" class="hint">
-          Damit die Kontur nicht am Rand abgeschnitten wird, unter <b>Form</b> etwas Rand
-          hinzufuegen.
+          Add some padding under <b>Shape</b> so the outline is not clipped at the edge.
         </p>
       </div>
     </section>
@@ -88,7 +87,7 @@ function resetEffects() {
 }
 
 .link-btn:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .hint b {

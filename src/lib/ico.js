@@ -20,7 +20,7 @@ export async function createIcoBlob(source, sizes = DEFAULT_ICO_SIZES) {
     .filter((s) => s > 0)
     .sort((a, b) => a - b)
 
-  if (!unique.length) throw new Error('Fuer den ICO-Export wird mindestens eine Groesse benoetigt.')
+  if (!unique.length) throw new Error('The ICO export needs at least one size.')
 
   const images = []
   for (const size of unique) {

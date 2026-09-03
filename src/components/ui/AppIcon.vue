@@ -42,6 +42,7 @@ const PATHS = {
   flipV: 'M3 12h18M7 8l5-4 5 4zM7 16l5 4 5-4z',
   rotate: 'M20 11a8 8 0 1 1-2.3-5.7M20 4v5h-5',
   palette: 'M12 3a9 9 0 0 0 0 18c1 0 1.5-.7 1.5-1.5 0-1.5 1-2 2-2H18a3 3 0 0 0 3-3c0-6-4-11.5-9-11.5zM7.5 12.5h.01M9.5 8.5h.01M14.5 7.5h.01M17 11h.01',
+  compare: 'M4 4h16v16H4zM12 4v16M10 9l-2 3 2 3M14 9l2 3-2 3',
 }
 
 const props = defineProps({

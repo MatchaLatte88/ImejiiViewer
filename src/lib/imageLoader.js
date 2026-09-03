@@ -38,13 +38,13 @@ export function isSupportedFile(file) {
   return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext))
 }
 
-function decodeViaImageElement(url) {
+export function decodeViaImageElement(url) {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => resolve(img)
     img.onerror = () =>
       reject(
-        new Error('Das Bild konnte nicht dekodiert werden. Das Format wird vermutlich nicht unterstuetzt.'),
+        new Error('The image could not be decoded. The format is most likely unsupported.'),
       )
     img.src = url
   })
@@ -56,7 +56,7 @@ function decodeViaImageElement(url) {
  */
 export async function loadImageFile(file) {
   if (!isSupportedFile(file)) {
-    throw new Error('Nicht unterstuetztes Format: ' + (file && file.name ? file.name : 'unbekannt'))
+    throw new Error('Unsupported format: ' + (file && file.name ? file.name : 'unknown'))
   }
 
   const url = URL.createObjectURL(file)
@@ -92,7 +92,7 @@ export async function loadImageFile(file) {
     ctx.drawImage(img, 0, 0, width, height)
 
     return {
-      name: file.name || 'bild',
+      name: file.name || 'image',
       type: file.type || '',
       size: file.size || 0,
       width,

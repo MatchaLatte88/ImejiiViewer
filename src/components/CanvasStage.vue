@@ -203,8 +203,8 @@ defineExpose({ resetView })
       <div v-if="store.eyedropperMode" class="picker-hint">
         <AppIcon name="eyedropper" :size="14" />
         <span>
-          Klicke auf die Farbe, die transparent werden soll.
-          <b>Umschalt</b> halten fuer mehrere Farben, <b>Esc</b> beendet.
+          Click the color that should become transparent.
+          Hold <b>Shift</b> for several colors, <b>Esc</b> to exit.
         </span>
         <span v-if="hoverColor" class="picker-hint__swatch">
           <i :style="{ background: hoverColor.hex }" />
@@ -217,16 +217,16 @@ defineExpose({ resetView })
 
     <footer class="stage-bar">
       <div class="stage-bar__group">
-        <AppButton icon="zoomOut" variant="ghost" size="sm" title="Verkleinern" @click="zoomBy(1 / 1.25)" />
-        <button type="button" class="stage-bar__zoom mono" title="Auf 100 % setzen" @click="setZoom(1)">
+        <AppButton icon="zoomOut" variant="ghost" size="sm" title="Zoom out" @click="zoomBy(1 / 1.25)" />
+        <button type="button" class="stage-bar__zoom mono" title="Set to 100%" @click="setZoom(1)">
           {{ Math.round(scale * 100) }} %
         </button>
-        <AppButton icon="zoomIn" variant="ghost" size="sm" title="Vergroessern" @click="zoomBy(1.25)" />
+        <AppButton icon="zoomIn" variant="ghost" size="sm" title="Zoom in" @click="zoomBy(1.25)" />
         <AppButton
           icon="fit"
           variant="ghost"
           size="sm"
-          title="Einpassen"
+          title="Fit to view"
           :active="store.fitToView"
           @click="resetView"
         />
@@ -237,8 +237,8 @@ defineExpose({ resetView })
           <span class="mono">{{ store.outputSize.width }} x {{ store.outputSize.height }} px</span>
           <span class="stage-bar__dot" />
         </template>
-        <span v-if="store.isRendering" class="stage-bar__busy">berechnet ...</span>
-        <span v-else-if="store.hasImage">bereit</span>
+        <span v-if="store.isRendering" class="stage-bar__busy">processing ...</span>
+        <span v-else-if="store.hasImage">ready</span>
       </div>
     </footer>
   </section>
@@ -394,6 +394,6 @@ defineExpose({ resetView })
 }
 
 .stage-bar__busy {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 </style>

@@ -1,9 +1,10 @@
 # Logo Creator
 
-Vue-3-Web-App, die aus beliebigen Bildern transparente Logos und komplette Icon-Sets erzeugt.
+Vue-3-Web-App mit zwei Arbeitsbereichen: **Logo** stellt Bilder frei und erzeugt komplette
+Icon-Sets, **Images** ist ein Betrachter, Editor und Stapel-Konverter für ganze Bildserien.
 Die gesamte Verarbeitung läuft im Browser – es wird nichts hochgeladen.
 
-## Funktionen
+## Logo-Modus
 
 **Hintergrund freistellen**
 - Farbe per Pipette direkt im Bild aufnehmen (mehrere Farben gleichzeitig möglich)
@@ -39,6 +40,37 @@ Die gesamte Verarbeitung läuft im Browser – es wird nichts hochgeladen.
 - Zoom/Pan im Canvas, Live-Vorschau in echten Icon-Größen
 - Undo/Redo über die gesamte Einstellungshistorie
 
+## Bild-Modus (Images)
+
+**Betrachten**
+- Beliebig viele Bilder gleichzeitig laden, Vorschauleiste mit Thumbnails
+- Blättern per Pfeiltasten oder Klick, Sortierung nach Reihenfolge, Name, Größe oder Datum
+- Zoom und Verschieben, Vollbild, Diashow mit einstellbarem Intervall
+- Original per Leertaste einblenden
+
+**Bearbeiten (pro Bild gespeichert)**
+- Interaktives Zuschneiden mit Seitenverhältnis-Vorgaben (frei, 1:1, 4:3, 3:2, 16:9),
+  Drittel-Raster und Live-Anzeige der Zielmaße – auch mehrfach verschachtelt
+- Drehen in 90°-Schritten (der Zuschnitt dreht mit), Spiegeln, freies Geraderichten
+  mit automatischem Beschnitt der leeren Ecken
+- Freies Verkleinern: längste Kante, Breite, Höhe oder Prozent, mit Warnung beim Hochskalieren
+- Automatische Tonwertkorrektur und Schnellprofile (Punchy, Soft, B&W, Warm, Cool)
+- Belichtung, Helligkeit, Kontrast, Gamma, Temperatur, Sättigung, Dynamik, Farbton,
+  Graustufen, Invertieren, Schärfen, Weichzeichnen, Vignette
+- Undo/Redo je Bild, Einstellungen auf alle anderen Bilder übertragen
+
+**Analysieren**
+- Dateiinfo (Format, Größe, Abmessungen, Megapixel, Seitenverhältnis, Ausgabemaße)
+- EXIF-Basisdaten: Kamera, Aufnahmedatum, Belichtungszeit, Blende, ISO, Brennweite
+- RGB-Histogramm des bearbeiteten Ergebnisses
+- EXIF-Ausrichtung wird beim Laden automatisch angewendet
+
+**Konvertieren**
+- Einzelbild als PNG, WebP oder JPG speichern oder in die Zwischenablage kopieren
+- Stapelverarbeitung: gemeinsames Zielformat, Qualität und Größe für alle Bilder,
+  wahlweise mit oder ohne die Einzelbearbeitungen, Ergebnis als ZIP
+- Namensmuster mit `{name}`, `{index}`, `{width}`, `{height}`; Fortschrittsanzeige
+
 ### Unterstützte Eingabeformate
 
 `.png` `.jpg` `.jpeg` `.webp` `.gif` `.bmp` `.avif` `.svg` `.ico`
@@ -58,10 +90,63 @@ Bilder mit mehr als 4096 px Kantenlänge werden beim Laden auf diese Größe red
 | `Leertaste` (halten) | Original einblenden |
 | `Esc` | Pipette beenden |
 
+Zusätzlich im Bild-Modus:
+
+| Taste | Funktion |
+| --- | --- |
+| `←` `→` | Vorheriges / nächstes Bild |
+| `C` | Zuschneiden ein-/ausschalten |
+| `R` / `Umschalt` + `R` | 90° rechts / links drehen |
+| `F` | Vollbild |
+| `S` | Diashow starten/stoppen |
+| `+` `-` `0` | Vergrößern, verkleinern, einpassen |
+| `Entf` | Bild aus der Liste entfernen |
+
 ## Start
 
-Unter Windows genügt ein Doppelklick auf **`start.bat`** – die Datei installiert beim ersten Start
-die Abhängigkeiten, startet den Server und öffnet den Browser.
+Die App läuft wahlweise im Browser oder als Desktop-Anwendung (Electron).
+
+| Datei | Ergebnis |
+| --- | --- |
+| **`start.bat`** | Web-Version: startet den Server und öffnet den Browser |
+| **`start-desktop.bat`** | Desktop-Version: startet den Server und öffnet das Programmfenster |
+
+Beide installieren beim ersten Start automatisch die Abhängigkeiten.
+
+## Desktop-App (Electron)
+
+```bash
+npm run desktop          # Dev-Server + Programmfenster (Hot Reload)
+npm run desktop:preview  # Produktionsbuild im Programmfenster (lädt aus dist/)
+```
+
+Was die Desktop-Variante zusätzlich kann:
+
+- **Systemdialoge** statt Browser-Downloads: „Öffnen" mit Mehrfachauswahl, „Speichern unter"
+  mit frei wählbarem Pfad
+- **Stapelexport in einen Ordner** statt in ein ZIP-Archiv – Zielordner wird abgefragt
+- **Anwendungsmenü** mit File / Edit / View / Help, inklusive Moduswechsel (`Strg+1`, `Strg+2`)
+  und Theme-Umschaltung (`Strg+T`)
+- Nur eine Instanz gleichzeitig; externe Links öffnen im Systembrowser
+
+Die Oberfläche ist identisch – der Renderer erkennt über `src/lib/desktop.js`, ob er in Electron
+läuft, und wählt automatisch den passenden Weg. Im Browser bleibt alles beim Download-Verhalten.
+
+Aufbau der Desktop-Schicht:
+
+```
+electron/
+  main.cjs        Fenster, Anwendungsmenü, IPC-Handler (Dialoge, Dateien schreiben)
+  preload.cjs     contextBridge: die einzige Verbindung zwischen Renderer und Node
+scripts/
+  electron-dev.mjs  startet Vite, wartet auf den Port und danach Electron
+src/lib/desktop.js  Adapter: Systemdialoge im Desktop, Downloads im Browser
+```
+
+Sicherheitseinstellungen des Fensters: `contextIsolation: true`, `nodeIntegration: false`,
+`sandbox: true`. Der Renderer hat keinen Zugriff auf Node – nur auf die acht Funktionen der Bridge.
+
+**Verpacken** (Installer/portable .exe) ist bewusst noch nicht eingerichtet.
 
 ## Entwicklung
 
@@ -83,6 +168,9 @@ src/
   lib/            reine Bildverarbeitung, ohne Vue-Abhängigkeit
     color.js        Farbraum-Helfer
     imageLoader.js  Dateien dekodieren, Hintergrundfarbe erkennen, Farbe abtasten
+    photoLoader.js  Bilder für den Bild-Modus lesen: Thumbnails, EXIF-Ausrichtung
+    exif.js         minimaler EXIF-Leser (JPEG/APP1) und Orientierungs-Transformation
+    photoPipeline.js Verarbeitungskette des Bild-Modus, Auto-Tonwert, Histogramm
     chromaKey.js    Farbe -> Transparenz, Flood-Fill, Despill, Feather, Alpha-Bleeding
     adjustments.js  Tonwert- und Farbkorrekturen (LUT-basiert)
     effects.js      Blur, Schärfen, Posterize, Kontur
@@ -92,8 +180,11 @@ src/
     ico.js          .ico-Datei mit eingebetteten PNGs
     presets.js      Export-Pakete je Plattform
     download.js     Download und ZIP (JSZip wird erst bei Bedarf geladen)
-  stores/editor.js  Pinia-Store: Zustand, Rendering, History, Export
-  components/       UI (Panels, Canvas, Bausteine)
+  stores/
+    ui.js           aktiver Modus und Hinweismeldungen
+    editor.js       Logo-Modus: Zustand, Rendering, History, Export
+    library.js      Bild-Modus: Bildliste, Bearbeitung, Stapelverarbeitung
+  components/       UI (beide Modi, Panels, Canvas, Bausteine)
 ```
 
 Die Verarbeitungsreihenfolge ist bewusst festgelegt: **Chroma-Key → Maskenkorrektur →

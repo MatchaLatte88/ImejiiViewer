@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "desktop": "node scripts/electron-dev.mjs",
+    "desktop:preview": "npm run build && electron .",
+    "electron": "electron ."
   },
   "dependencies": {
     "jszip": "^3.10.1",
@@ -16,6 +19,8 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.0",
+    "electron": "^44.1.1",
     "vite": "^7.0.0"
-  }
+  },
+  "main": "electron/main.cjs"
 }

@@ -13,7 +13,7 @@ export function canvasToBlob(canvas, format = 'png', quality = 0.92) {
     canvas.toBlob(
       (blob) => {
         if (!blob) {
-          reject(new Error('Export fehlgeschlagen: ' + config.label + ' wird nicht unterstuetzt.'))
+          reject(new Error('Export failed: ' + config.label + ' is not supported.'))
           return
         }
         resolve(blob)
@@ -43,6 +43,14 @@ export function renderToSize(source, width, height, options = {}) {
   ctx.fillRect(0, 0, width, height)
   ctx.drawImage(resizeCanvas(source, width, height, fit), 0, 0)
   return canvas
+}
+
+/** Menschenlesbare Dateigroesse - fuer Live-Schaetzungen neben dem Qualitaetsregler. */
+export function formatBytes(bytes) {
+  if (bytes == null) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(bytes < 10240 ? 1 : 0) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
 /** Dateiname ohne Erweiterung, auf sichere Zeichen reduziert. */

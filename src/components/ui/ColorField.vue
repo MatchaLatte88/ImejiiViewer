@@ -36,7 +36,7 @@ function commitText() {
         type="color"
         class="color-field__input"
         :value="modelValue || '#ffffff'"
-        :aria-label="label || 'Farbe'"
+        :aria-label="label || 'Color'"
         @input="emit('update:modelValue', $event.target.value)"
       />
     </label>
@@ -45,7 +45,7 @@ function commitText() {
       class="color-field__text mono"
       type="text"
       spellcheck="false"
-      :aria-label="(label || 'Farbe') + ' als Hex-Wert'"
+      :aria-label="(label || 'Color') + ' as hex value'"
       @blur="commitText"
       @keyup.enter="commitText"
     />

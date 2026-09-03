@@ -30,36 +30,36 @@ function resetTransform() {
   <div class="panel">
     <section class="panel-section">
       <div class="section-title">
-        <span>Ausrichtung</span>
-        <button type="button" class="link-btn" @click="resetTransform">zuruecksetzen</button>
+        <span>Orientation</span>
+        <button type="button" class="link-btn" @click="resetTransform">reset</button>
       </div>
       <div class="stack">
         <div class="btn-row">
-          <AppButton icon="rotate" size="sm" title="90 Grad gegen den Uhrzeigersinn" @click="rotateBy(-90)">
+          <AppButton icon="rotate" size="sm" title="Rotate 90 degrees counter-clockwise" @click="rotateBy(-90)">
             -90
           </AppButton>
-          <AppButton icon="rotate" size="sm" title="90 Grad im Uhrzeigersinn" @click="rotateBy(90)">
+          <AppButton icon="rotate" size="sm" title="Rotate 90 degrees clockwise" @click="rotateBy(90)">
             +90
           </AppButton>
           <AppButton
             icon="flipH"
             size="sm"
-            title="Horizontal spiegeln"
+            title="Flip horizontally"
             :active="transform.flipH"
             @click="transform.flipH = !transform.flipH"
           />
           <AppButton
             icon="flipV"
             size="sm"
-            title="Vertikal spiegeln"
+            title="Flip vertically"
             :active="transform.flipV"
             @click="transform.flipV = !transform.flipV"
           />
         </div>
         <SliderControl
           v-model="transform.rotate"
-          label="Freie Drehung"
-          unit="Grad"
+          label="Free rotation"
+          unit="deg"
           :min="-180"
           :max="180"
           :step="0.5"
@@ -69,47 +69,47 @@ function resetTransform() {
     </section>
 
     <section class="panel-section">
-      <div class="section-title"><span>Leinwand</span></div>
+      <div class="section-title"><span>Canvas</span></div>
       <div class="stack">
         <ToggleSwitch
           v-model="transform.trim"
-          label="Transparente Raender abschneiden"
-          hint="Schneidet das Motiv frei - Grundlage fuer randlose Icons"
+          label="Trim transparent edges"
+          hint="Crops to the subject - the basis for edge-to-edge icons"
         />
         <ToggleSwitch
           v-model="transform.square"
-          label="Quadratische Leinwand"
-          hint="Pflicht fuer die meisten App- und Favicon-Formate"
+          label="Square canvas"
+          hint="Required by most app and favicon formats"
         />
         <SliderControl
           v-model="transform.padding"
-          label="Rand"
+          label="Padding"
           unit="%"
           :min="0"
           :max="40"
           :step="0.5"
           :reset-value="0"
-          hint="Sicherheitsabstand rund um das Motiv"
+          hint="Safe margin around the subject"
         />
       </div>
     </section>
 
     <section class="panel-section">
-      <div class="section-title"><span>Form</span></div>
+      <div class="section-title"><span>Shape</span></div>
       <div class="stack">
         <SliderControl
           v-model="transform.cornerRadius"
-          label="Eckenradius"
+          label="Corner radius"
           unit="%"
           :min="0"
           :max="50"
           :step="0.5"
           :reset-value="0"
-          hint="50 % ergibt bei quadratischer Leinwand einen Kreis"
+          hint="50% turns a square canvas into a circle"
         />
         <div class="btn-row">
-          <AppButton size="sm" icon="square" @click="transform.cornerRadius = 0">Eckig</AppButton>
-          <AppButton size="sm" icon="grid" @click="transform.cornerRadius = 22">Abgerundet</AppButton>
+          <AppButton size="sm" icon="square" @click="transform.cornerRadius = 0">Square</AppButton>
+          <AppButton size="sm" icon="grid" @click="transform.cornerRadius = 22">Rounded</AppButton>
           <AppButton
             size="sm"
             icon="circle"
@@ -120,19 +120,19 @@ function resetTransform() {
               }
             "
           >
-            Kreis
+            Circle
           </AppButton>
         </div>
       </div>
     </section>
 
     <section class="panel-section">
-      <div class="section-title"><span>Hintergrund</span></div>
+      <div class="section-title"><span>Background</span></div>
       <div class="stack">
         <ToggleSwitch
           v-model="hasBackground"
-          label="Hintergrundfarbe fuellen"
-          hint="Fuer Formate ohne Transparenz, z. B. iOS-Icons oder JPG"
+          label="Fill background color"
+          hint="For formats without transparency, e.g. iOS icons or JPG"
         />
         <div v-if="hasBackground" class="bg-row">
           <input
@@ -143,7 +143,7 @@ function resetTransform() {
           />
           <div class="bg-row__presets">
             <button
-              v-for="color in ['#ffffff', '#000000', '#0d0f14', '#6366f1', '#f5f5f5']"
+              v-for="color in ['#ffffff', '#000000', '#0d0f14', '#f5b70a', '#f5f5f5']"
               :key="color"
               type="button"
               class="bg-row__preset"
@@ -179,7 +179,7 @@ function resetTransform() {
 }
 
 .link-btn:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .bg-row {

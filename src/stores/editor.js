@@ -4,9 +4,10 @@ import { DEFAULT_SETTINGS, cloneSettings, processImage } from '../lib/pipeline.j
 import { detectBackgroundColor, loadImageFile, sampleColorAt } from '../lib/imageLoader.js'
 import { canvasToBlob, renderSizeSet, renderToSize, slugify, EXPORT_FORMATS } from '../lib/exportImage.js'
 import { createIcoBlob } from '../lib/ico.js'
-import { createZip, downloadBlob } from '../lib/download.js'
+import { saveBlob, saveFileSet } from '../lib/desktop.js'
 import { getPreset } from '../lib/presets.js'
 import { hexToRgb, rgbToHex } from '../lib/color.js'
+import { useUiStore } from './ui.js'
 
 /** Obere und untere Kantenlaenge, mit der die Vorschau gerechnet wird. */
 const PREVIEW_MAX_SIZE = 1280
@@ -33,7 +34,7 @@ export const useEditorStore = defineStore('editor', () => {
   const renderVersion = ref(0)
   const isLoading = ref(false)
   const isRendering = ref(false)
-  const notice = ref(null) // { type: 'info'|'error'|'success', message }
+  const ui = useUiStore()
 
   // --- Einstellungen -----------------------------------------------------
   const settings = ref(cloneSettings(DEFAULT_SETTINGS))
@@ -71,36 +72,41 @@ export const useEditorStore = defineStore('editor', () => {
     }
   })
 
+  // Hinweise laufen zentral ueber den UI-Store, damit beide Modi dieselbe Anzeige nutzen.
   function setNotice(type, message, timeout = 4000) {
-    notice.value = { type, message }
-    if (timeout) {
-      setTimeout(() => {
-        if (notice.value && notice.value.message === message) notice.value = null
-      }, timeout)
-    }
-  }
-
-  function dismissNotice() {
-    notice.value = null
+    ui.setNotice(type, message, timeout)
   }
 
   // --- Rendern -----------------------------------------------------------
   let renderHandle = null
+  let renderFallback = null
   let qualityTimer = null
+
+  function cancelPendingRender() {
+    if (renderHandle) cancelAnimationFrame(renderHandle)
+    if (renderFallback) clearTimeout(renderFallback)
+    renderHandle = null
+    renderFallback = null
+  }
 
   function scheduleRender() {
     if (!source.value) return
-    if (renderHandle) cancelAnimationFrame(renderHandle)
+    cancelPendingRender()
     if (qualityTimer) clearTimeout(qualityTimer)
     isRendering.value = true
-    renderHandle = requestAnimationFrame(() => {
-      renderHandle = null
-      renderNow()
-      // Nach der Interaktion einmal in voller Vorschauqualitaet nachziehen.
-      if (previewBudget.value < PREVIEW_MAX_SIZE) {
-        qualityTimer = setTimeout(() => renderNow(true), 500)
-      }
-    })
+    renderHandle = requestAnimationFrame(runScheduledRender)
+    // Ohne Animationsframes (Hintergrundtab, verstecktes Fenster) wuerde die
+    // Vorschau sonst stehen bleiben - deshalb ein zweiter Ausloeser.
+    renderFallback = setTimeout(runScheduledRender, 200)
+  }
+
+  function runScheduledRender() {
+    cancelPendingRender()
+    renderNow()
+    // Nach der Interaktion einmal in voller Vorschauqualitaet nachziehen.
+    if (previewBudget.value < PREVIEW_MAX_SIZE) {
+      qualityTimer = setTimeout(() => renderNow(true), 500)
+    }
   }
 
   function renderNow(highQuality = false) {
@@ -127,7 +133,7 @@ export const useEditorStore = defineStore('editor', () => {
       previewCanvas.value = markRaw(canvas)
       renderVersion.value++
     } catch (error) {
-      setNotice('error', 'Verarbeitung fehlgeschlagen: ' + error.message, 6000)
+      setNotice('error', 'Processing failed: ' + error.message, 6000)
     } finally {
       isRendering.value = false
     }
@@ -135,7 +141,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   /** Rendert die Datei in voller Aufloesung - nur fuer den Export. */
   function renderFullResolution() {
-    if (!source.value) throw new Error('Kein Bild geladen.')
+    if (!source.value) throw new Error('No image loaded.')
     return processImage(source.value.imageData, settings.value)
   }
 
@@ -175,7 +181,7 @@ export const useEditorStore = defineStore('editor', () => {
       if (loaded.scaled) {
         setNotice(
           'info',
-          'Bild auf ' + loaded.width + ' x ' + loaded.height + ' px reduziert (Arbeitsgrenze).',
+          'Image reduced to ' + loaded.width + ' x ' + loaded.height + ' px (working limit).',
           6000,
         )
       }
@@ -198,14 +204,14 @@ export const useEditorStore = defineStore('editor', () => {
 
   function resetSettings({ silent = false } = {}) {
     settings.value = cloneSettings(DEFAULT_SETTINGS)
-    if (!silent) setNotice('info', 'Alle Einstellungen zurueckgesetzt.')
+    if (!silent) setNotice('info', 'All settings have been reset.')
   }
 
   // --- Hintergrund entfernen --------------------------------------------
   function addKeyColor(hex, { replace = false } = {}) {
     const rgb = hexToRgb(hex)
     if (!rgb) {
-      setNotice('error', 'Ungueltiger Farbwert: ' + hex)
+      setNotice('error', 'Invalid color value: ' + hex)
       return
     }
     const entry = { hex: rgbToHex(rgb.r, rgb.g, rgb.b), ...rgb }
@@ -233,7 +239,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (!source.value) return null
     const sample = sampleColorAt(source.value.imageData, x, y, 1)
     if (!sample) {
-      setNotice('error', 'An dieser Stelle ist bereits alles transparent.')
+      setNotice('error', 'This spot is already fully transparent.')
       return null
     }
     addKeyColor(sample.hex, { replace })
@@ -247,17 +253,17 @@ export const useEditorStore = defineStore('editor', () => {
     if (!source.value) return
     const detected = detectBackgroundColor(source.value.imageData)
     if (!detected) {
-      setNotice('error', 'Es konnte keine Hintergrundfarbe erkannt werden.')
+      setNotice('error', 'No background color could be detected.')
       return
     }
     addKeyColor(detected.hex, { replace: true })
     setNotice(
       'success',
-      'Hintergrundfarbe erkannt: ' +
+      'Background color detected: ' +
         detected.hex +
         ' (' +
         Math.round(detected.ratio * 100) +
-        ' % des Randes).',
+        '% of the border).',
     )
   }
 
@@ -302,14 +308,14 @@ export const useEditorStore = defineStore('editor', () => {
     try {
       localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(savedPresets.value))
     } catch (error) {
-      setNotice('error', 'Preset konnte nicht gespeichert werden: ' + error.message)
+      setNotice('error', 'Preset could not be saved: ' + error.message)
     }
   }
 
   function savePreset(name) {
     const trimmed = (name || '').trim()
     if (!trimmed) {
-      setNotice('error', 'Bitte einen Namen fuer das Preset angeben.')
+      setNotice('error', 'Please enter a name for the preset.')
       return
     }
     const entry = {
@@ -321,14 +327,14 @@ export const useEditorStore = defineStore('editor', () => {
     if (existing >= 0) savedPresets.value.splice(existing, 1, entry)
     else savedPresets.value.push(entry)
     persistPresets()
-    setNotice('success', 'Preset "' + trimmed + '" gespeichert.')
+    setNotice('success', 'Preset "' + trimmed + '" saved.')
   }
 
   function applySavedPreset(id) {
     const preset = savedPresets.value.find((entry) => entry.id === id)
     if (!preset) return
     settings.value = JSON.parse(JSON.stringify(preset.settings))
-    setNotice('success', 'Preset "' + preset.name + '" angewendet.')
+    setNotice('success', 'Preset "' + preset.name + '" applied.')
   }
 
   function deleteSavedPreset(id) {
@@ -351,16 +357,17 @@ export const useEditorStore = defineStore('editor', () => {
 
     const blob = await canvasToBlob(target, format, quality)
     const suffix = size ? '-' + size : ''
-    downloadBlob(blob, baseName.value + suffix + '.' + config.extension)
-    setNotice('success', 'Export erstellt: ' + baseName.value + suffix + '.' + config.extension)
+    const fileName = baseName.value + suffix + '.' + config.extension
+    const result = await saveBlob(blob, fileName)
+    if (result.saved) setNotice('success', 'Saved: ' + (result.path || fileName))
   }
 
   async function exportIco(sizes) {
     if (!source.value) return
     const canvas = renderFullResolution()
     const blob = await createIcoBlob(canvas, sizes)
-    downloadBlob(blob, baseName.value + '.ico')
-    setNotice('success', 'ICO mit ' + sizes.length + ' Groessen erstellt.')
+    const result = await saveBlob(blob, baseName.value + '.ico')
+    if (result.saved) setNotice('success', 'ICO created with ' + sizes.length + ' sizes.')
   }
 
   async function exportCustomSizes(sizes, { format = 'png', quality = 0.92, background = null }) {
@@ -373,18 +380,21 @@ export const useEditorStore = defineStore('editor', () => {
       baseName: baseName.value,
     })
     if (files.length === 1) {
-      downloadBlob(files[0].blob, files[0].name)
-    } else {
-      const zip = await createZip(files)
-      downloadBlob(zip, baseName.value + '-icons.zip')
+      const result = await saveBlob(files[0].blob, files[0].name)
+      if (result.saved) setNotice('success', 'Saved: ' + (result.path || files[0].name))
+      return
     }
-    setNotice('success', files.length + ' Datei(en) exportiert.')
+
+    const result = await saveFileSet(files, { zipName: baseName.value + '-icons.zip' })
+    if (result.mode !== 'canceled') {
+      setNotice('success', result.count + ' file(s) exported' + (result.path ? ' to ' + result.path : '.'))
+    }
   }
 
   async function exportPreset(presetId, { format = 'png', quality = 0.92, background = null } = {}) {
     if (!source.value) return
     const preset = getPreset(presetId)
-    if (!preset) throw new Error('Unbekanntes Preset: ' + presetId)
+    if (!preset) throw new Error('Unknown preset: ' + presetId)
 
     const canvas = renderFullResolution()
     const files = []
@@ -402,21 +412,25 @@ export const useEditorStore = defineStore('editor', () => {
       files.push({ name: entry.name, text: entry.build(baseName.value) })
     }
 
-    const zip = await createZip(files)
-    downloadBlob(zip, baseName.value + '-' + preset.id + '.zip')
-    setNotice('success', preset.name + ' exportiert (' + files.length + ' Dateien).')
+    const result = await saveFileSet(files, { zipName: baseName.value + '-' + preset.id + '.zip' })
+    if (result.mode !== 'canceled') {
+      setNotice(
+        'success',
+        preset.name + ' exported (' + result.count + ' files)' + (result.path ? ' to ' + result.path : '.'),
+      )
+    }
   }
 
   /** Kopiert das Ergebnis als PNG in die Zwischenablage. */
   async function copyToClipboard() {
     if (!source.value) return
     if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
-      setNotice('error', 'Die Zwischenablage wird von diesem Browser nicht unterstuetzt.')
+      setNotice('error', 'This browser does not support the clipboard.')
       return
     }
     const blob = await canvasToBlob(renderFullResolution(), 'png')
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-    setNotice('success', 'PNG in die Zwischenablage kopiert.')
+    setNotice('success', 'PNG copied to the clipboard.')
   }
 
   return {
@@ -427,7 +441,6 @@ export const useEditorStore = defineStore('editor', () => {
     renderVersion,
     isLoading,
     isRendering,
-    notice,
     settings,
     activeTool,
     eyedropperMode,
@@ -444,7 +457,6 @@ export const useEditorStore = defineStore('editor', () => {
     baseName,
     // Actions
     setNotice,
-    dismissNotice,
     loadFile,
     closeImage,
     resetSettings,

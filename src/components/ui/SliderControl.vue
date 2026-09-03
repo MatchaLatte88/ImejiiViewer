@@ -17,7 +17,7 @@ const emit = defineEmits(['update:modelValue'])
 
 const percent = computed(() => ((props.modelValue - props.min) / (props.max - props.min)) * 100)
 
-/** Bipolare Regler werden ab der Mitte gefuellt - der Neutralpunkt bleibt sichtbar. */
+/** Bipolar sliders fill from the center so the neutral point stays visible. */
 const isBipolar = computed(() => props.min < 0 && props.max > 0)
 
 const trackStyle = computed(() => {
@@ -53,7 +53,7 @@ function reset() {
       <button
         type="button"
         class="slider__label"
-        :title="hint || 'Doppelklick setzt zurueck'"
+        :title="hint || 'Double-click to reset'"
         @dblclick="reset"
       >
         {{ label }}

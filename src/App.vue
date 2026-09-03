@@ -1,50 +1,64 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useUiStore } from './stores/ui.js'
 import { useEditorStore } from './stores/editor.js'
+import { useLibraryStore } from './stores/library.js'
+import { useTheme } from './composables/useTheme.js'
 import { ACCEPTED_EXTENSIONS, isSupportedFile } from './lib/imageLoader.js'
+import { getStartupFiles, isDesktop, onFilesOpened, onMenuAction, pickImages } from './lib/desktop.js'
 import AppHeader from './components/AppHeader.vue'
-import CanvasStage from './components/CanvasStage.vue'
-import DropZone from './components/DropZone.vue'
-import BackgroundPanel from './components/panels/BackgroundPanel.vue'
-import AdjustPanel from './components/panels/AdjustPanel.vue'
-import EffectsPanel from './components/panels/EffectsPanel.vue'
-import TransformPanel from './components/panels/TransformPanel.vue'
-import ExportPanel from './components/panels/ExportPanel.vue'
+import LogoMode from './components/LogoMode.vue'
+import ImageMode from './components/ImageMode.vue'
+import ViewMode from './components/ViewMode.vue'
 import AppIcon from './components/ui/AppIcon.vue'
 
-const store = useEditorStore()
+const ui = useUiStore()
+const editor = useEditorStore()
+const library = useLibraryStore()
+const { toggleTheme } = useTheme()
 
 const fileInput = ref(null)
 const isDragging = ref(false)
 let dragDepth = 0
-
-const TOOLS = [
-  { id: 'background', label: 'Hintergrund', icon: 'eyedropper', component: BackgroundPanel },
-  { id: 'adjust', label: 'Farbe', icon: 'palette', component: AdjustPanel },
-  { id: 'effects', label: 'Effekte', icon: 'sparkles', component: EffectsPanel },
-  { id: 'transform', label: 'Form', icon: 'crop', component: TransformPanel },
-]
-
-const activePanel = computed(
-  () => TOOLS.find((tool) => tool.id === store.activeTool)?.component ?? BackgroundPanel,
-)
+let releaseMenu = null
+let releaseFiles = null
 
 const accept = ACCEPTED_EXTENSIONS.join(',')
+const isImageMode = computed(() => ui.mode === 'images')
+/** Betrachter und Bildmodus teilen sich die Bibliothek, der Logo-Modus nicht. */
+const usesLibrary = computed(() => ui.mode !== 'logo')
+const hasContent = computed(() => (usesLibrary.value ? library.hasItems : editor.hasImage))
 
-function openFileDialog() {
-  fileInput.value?.click()
-}
-
-async function handleFiles(files) {
-  const file = Array.from(files || []).find(isSupportedFile)
-  if (!file) {
-    store.setNotice('error', 'Kein unterstuetztes Bildformat gefunden.')
+/** Im Desktop kommt der Systemdialog, im Browser das versteckte File-Input. */
+async function openFileDialog() {
+  if (!isDesktop) {
+    fileInput.value?.click()
     return
   }
   try {
-    await store.loadFile(file)
+    const files = await pickImages({ multiple: usesLibrary.value })
+    if (files) await handleFiles(files)
+  } catch (error) {
+    ui.setNotice('error', 'Could not open the file: ' + error.message, 7000)
+  }
+}
+
+/** Dateien landen je nach Modus im Logo-Editor oder in der Bildbibliothek. */
+async function handleFiles(files) {
+  const supported = Array.from(files || []).filter(isSupportedFile)
+  if (!supported.length) {
+    ui.setNotice('error', 'No supported image format found.')
+    return
+  }
+
+  if (usesLibrary.value) {
+    return library.addFiles(supported)
+  }
+
+  try {
+    await editor.loadFile(supported[0])
   } catch {
-    // Fehlermeldung kommt bereits aus dem Store.
+    // The error message already comes from the store.
   }
 }
 
@@ -76,70 +90,117 @@ function onDrop(event) {
   handleFiles(event.dataTransfer?.files)
 }
 
-// --- Zwischenablage -----------------------------------------------------
 function onPaste(event) {
-  const items = Array.from(event.clipboardData?.items || [])
-  const item = items.find((entry) => entry.kind === 'file' && entry.type.startsWith('image/'))
-  if (!item) return
-  const file = item.getAsFile()
-  if (file) handleFiles([file])
-}
-
-// --- Tastatur -----------------------------------------------------------
-function isTypingTarget(target) {
-  return target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')
+  const files = Array.from(event.clipboardData?.items || [])
+    .filter((entry) => entry.kind === 'file' && entry.type.startsWith('image/'))
+    .map((entry) => entry.getAsFile())
+    .filter(Boolean)
+  if (files.length) handleFiles(files)
 }
 
 function onKeyDown(event) {
-  const meta = event.ctrlKey || event.metaKey
-
-  if (meta && event.key.toLowerCase() === 'z') {
-    event.preventDefault()
-    if (event.shiftKey) store.redo()
-    else store.undo()
-    return
-  }
-  if (meta && event.key.toLowerCase() === 'o') {
+  // Im Desktop bedient das Anwendungsmenue diese Kuerzel.
+  if (isDesktop) return
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'o') {
     event.preventDefault()
     openFileDialog()
-    return
-  }
-  if (meta && event.key.toLowerCase() === 's') {
-    event.preventDefault()
-    if (store.hasImage) store.exportSingle({ format: 'png' })
-    return
-  }
-
-  if (isTypingTarget(event.target)) return
-
-  if (event.key === 'Escape') {
-    store.eyedropperMode = null
-    return
-  }
-  if (event.key.toLowerCase() === 'i' && store.hasImage) {
-    store.eyedropperMode = store.eyedropperMode ? null : 'add'
-    return
-  }
-  if (event.code === 'Space' && store.hasImage && !event.repeat) {
-    event.preventDefault()
-    store.showOriginal = true
   }
 }
 
-function onKeyUp(event) {
-  if (event.code === 'Space') store.showOriginal = false
+// --- Moduswechsel -------------------------------------------------------
+// Welches Bild zuletzt in den Logo-Editor gewandert ist. So geht eine begonnene
+// Logo-Bearbeitung beim Hin- und Herwechseln nicht verloren.
+let handedOver = null
+
+/**
+ * Der Logo-Editor arbeitet an einem einzelnen Bild und hat keine Bibliothek -
+ * wer aus dem Betrachter kommt, nimmt das sichtbare Bild also mit.
+ */
+async function setMode(next) {
+  const item = usesLibrary.value ? library.activeItem : null
+  ui.setMode(next)
+
+  if (next !== 'logo' || !item) return
+  if (handedOver === item.file && editor.hasImage) return
+
+  handedOver = item.file
+  try {
+    await editor.loadFile(item.file)
+  } catch {
+    // The error message already comes from the store.
+  }
+}
+
+// --- Menuebefehle aus dem Hauptprozess ----------------------------------
+async function saveCurrent() {
+  if (usesLibrary.value) {
+    if (library.activeItem) await library.saveActiveAs('png', 92)
+  } else if (editor.hasImage) {
+    await editor.exportSingle({ format: 'png' })
+  }
+}
+
+function handleMenuAction(action) {
+  switch (action) {
+    case 'open':
+      openFileDialog()
+      break
+    case 'save':
+      saveCurrent()
+      break
+    case 'undo':
+      usesLibrary.value ? library.undo() : editor.undo()
+      break
+    case 'redo':
+      usesLibrary.value ? library.redo() : editor.redo()
+      break
+    case 'theme':
+      toggleTheme()
+      break
+    case 'mode:view':
+      setMode('view')
+      break
+    case 'mode:logo':
+      setMode('logo')
+      break
+    case 'mode:images':
+      setMode('images')
+      break
+    default:
+      break
+  }
+}
+
+// --- Dateien von aussen -------------------------------------------------
+/**
+ * Bilder, mit denen die App geoeffnet wurde ("Oeffnen mit", Doppelklick) oder
+ * die spaeter hereingereicht werden. Aus dem Logo-Modus wechselt die App dafuer
+ * in den Betrachter - dort ist Platz fuer beliebig viele Bilder.
+ */
+async function receiveExternalFiles({ files, error }) {
+  if (error) ui.setNotice('error', 'Could not read: ' + error, 8000)
+  if (!files.length) return
+  if (ui.mode === 'logo') ui.setMode('view')
+
+  // Wer eine Datei im Explorer oeffnet, will genau sie sehen - nicht das Bild,
+  // das gerade offen war.
+  const addedIds = await handleFiles(files)
+  if (addedIds?.length) await library.select(addedIds[0])
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', onKeyDown)
-  window.addEventListener('keyup', onKeyUp)
   window.addEventListener('paste', onPaste)
+  window.addEventListener('keydown', onKeyDown)
+  releaseMenu = onMenuAction(handleMenuAction)
+  releaseFiles = onFilesOpened(receiveExternalFiles)
+  getStartupFiles().then(receiveExternalFiles)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeyDown)
-  window.removeEventListener('keyup', onKeyUp)
   window.removeEventListener('paste', onPaste)
+  window.removeEventListener('keydown', onKeyDown)
+  releaseMenu?.()
+  releaseFiles?.()
 })
 </script>
 
@@ -151,51 +212,31 @@ onBeforeUnmount(() => {
     @dragleave="onDragLeave"
     @drop="onDrop"
   >
-    <AppHeader @open-file="openFileDialog" />
+    <AppHeader @open-file="openFileDialog" @set-mode="setMode" />
 
     <main class="app__body">
-      <nav v-if="store.hasImage" class="toolbar">
-        <button
-          v-for="tool in TOOLS"
-          :key="tool.id"
-          type="button"
-          class="toolbar__item"
-          :class="{ 'is-active': store.activeTool === tool.id }"
-          :title="tool.label"
-          @click="store.activeTool = tool.id"
-        >
-          <AppIcon :name="tool.icon" :size="18" />
-          <span>{{ tool.label }}</span>
-        </button>
-      </nav>
-
-      <section v-if="store.hasImage" class="sidebar">
-        <component :is="activePanel" />
-      </section>
-
-      <CanvasStage v-if="store.hasImage" />
-      <DropZone v-else :is-dragging="isDragging" :is-loading="store.isLoading" @open-file="openFileDialog" />
-
-      <ExportPanel v-if="store.hasImage" />
+      <ViewMode v-if="ui.mode === 'view'" :is-dragging="isDragging" @open-files="openFileDialog" />
+      <ImageMode v-else-if="isImageMode" :is-dragging="isDragging" @open-files="openFileDialog" />
+      <LogoMode v-else :is-dragging="isDragging" @open-file="openFileDialog" />
     </main>
 
     <Transition name="toast">
-      <div v-if="store.notice" class="toast" :class="'toast--' + store.notice.type">
+      <div v-if="ui.notice" class="toast" :class="'toast--' + ui.notice.type">
         <AppIcon
-          :name="store.notice.type === 'error' ? 'alert' : store.notice.type === 'success' ? 'check' : 'info'"
+          :name="ui.notice.type === 'error' ? 'alert' : ui.notice.type === 'success' ? 'check' : 'info'"
           :size="15"
         />
-        <span>{{ store.notice.message }}</span>
-        <button type="button" class="toast__close" @click="store.dismissNotice()">
+        <span>{{ ui.notice.message }}</span>
+        <button type="button" class="toast__close" @click="ui.dismissNotice()">
           <AppIcon name="close" :size="13" />
         </button>
       </div>
     </Transition>
 
-    <div v-if="isDragging && store.hasImage" class="drop-overlay">
+    <div v-if="isDragging && hasContent" class="drop-overlay">
       <div class="drop-overlay__box">
         <AppIcon name="upload" :size="26" />
-        <p>Neues Bild hier ablegen</p>
+        <p>{{ usesLibrary ? 'Drop images to add them' : 'Drop a new image here' }}</p>
       </div>
     </div>
 
@@ -204,6 +245,7 @@ onBeforeUnmount(() => {
       class="sr-only"
       type="file"
       :accept="accept"
+      :multiple="usesLibrary"
       @change="onFileInput"
     />
   </div>
@@ -221,51 +263,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex: 1;
   min-height: 0;
-}
-
-.toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 68px;
-  flex: none;
-  padding: var(--space-2) 6px;
-  background: var(--bg-elevated);
-  border-right: 1px solid var(--border);
-}
-
-.toolbar__item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 9px 2px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius);
-  color: var(--text-subtle);
-  font-size: 10px;
-  transition:
-    background var(--transition),
-    color var(--transition);
-}
-
-.toolbar__item:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.toolbar__item.is-active {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.sidebar {
-  width: var(--panel-width);
-  flex: none;
-  overflow-y: auto;
-  background: var(--bg-panel);
-  border-right: 1px solid var(--border);
 }
 
 .toast {
@@ -318,9 +315,7 @@ onBeforeUnmount(() => {
 
 .toast-enter-active,
 .toast-leave-active {
-  transition:
-    opacity var(--transition),
-    transform var(--transition);
+  transition: opacity var(--transition), transform var(--transition);
 }
 
 .toast-enter-from,
@@ -345,11 +340,11 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-6) var(--space-6);
+  padding: var(--space-6);
   border: 2px dashed var(--accent);
   border-radius: var(--radius-xl);
   background: var(--bg-elevated);
-  color: var(--accent);
+  color: var(--accent-text);
   box-shadow: var(--shadow-lg);
 }
 
@@ -360,8 +355,7 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 1280px) {
-  .sidebar,
-  :deep(.export) {
+  .app {
     --panel-width: 280px;
   }
 }

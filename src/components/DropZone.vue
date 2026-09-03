@@ -17,17 +17,17 @@ const emit = defineEmits(['open-file'])
       <div class="dropzone__icon">
         <AppIcon name="image" :size="28" />
       </div>
-      <h2>Bild hierher ziehen</h2>
+      <h2>Drop an image here</h2>
       <p class="dropzone__lead">
-        Aus jedem Bild ein transparentes Logo oder ein komplettes Icon-Set erzeugen -
-        alles lokal im Browser, ohne Upload.
+        Turn any image into a transparent logo or a complete icon set -
+        entirely in your browser, nothing is uploaded.
       </p>
 
       <div class="dropzone__actions">
         <AppButton icon="folder" variant="primary" :disabled="isLoading" @click="emit('open-file')">
-          {{ isLoading ? 'Wird geladen ...' : 'Datei auswaehlen' }}
+          {{ isLoading ? 'Loading ...' : 'Choose file' }}
         </AppButton>
-        <span class="dropzone__or">oder <b>Strg + V</b> zum Einfuegen</span>
+        <span class="dropzone__or">or press <b>Ctrl + V</b> to paste</span>
       </div>
 
       <ul class="dropzone__formats">
@@ -38,22 +38,22 @@ const emit = defineEmits(['open-file'])
         <div class="step">
           <span class="step__num">1</span>
           <div>
-            <b>Hintergrund waehlen</b>
-            <p>Mit der Pipette die Farbe antippen, die transparent werden soll.</p>
+            <b>Pick the background</b>
+            <p>Click the color that should become transparent with the eyedropper.</p>
           </div>
         </div>
         <div class="step">
           <span class="step__num">2</span>
           <div>
-            <b>Farben feinjustieren</b>
-            <p>Helligkeit, Kontrast, Saettigung und Kanten anpassen.</p>
+            <b>Fine-tune the colors</b>
+            <p>Adjust brightness, contrast, saturation and edges.</p>
           </div>
         </div>
         <div class="step">
           <span class="step__num">3</span>
           <div>
-            <b>Icon-Set exportieren</b>
-            <p>PNG, WebP, JPG oder Multi-Size-ICO als fertiges ZIP.</p>
+            <b>Export the icon set</b>
+            <p>PNG, WebP, JPG or a multi-size ICO, packed as a ZIP.</p>
           </div>
         </div>
       </div>
@@ -101,7 +101,7 @@ const emit = defineEmits(['open-file'])
   margin: 0 auto var(--space-4);
   border-radius: 18px;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .dropzone__card h2 {

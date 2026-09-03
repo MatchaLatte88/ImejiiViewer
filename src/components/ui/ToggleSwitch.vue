@@ -97,11 +97,11 @@ const emit = defineEmits(['update:modelValue'])
 
 .toggle__input:checked + .toggle__track .toggle__thumb {
   transform: translateX(15px);
-  background: #fff;
+  background: var(--accent-contrast);
 }
 
 .toggle__input:focus-visible + .toggle__track {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 </style>

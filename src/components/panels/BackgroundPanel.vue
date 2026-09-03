@@ -15,8 +15,8 @@ const keying = computed(() => store.settings.keying)
 const hasKeys = computed(() => keying.value.keys.length > 0)
 
 const modeOptions = [
-  { value: false, label: 'Ueberall', title: 'Alle passenden Pixel im Bild entfernen' },
-  { value: true, label: 'Zusammenhaengend', title: 'Nur die verbundene Flaeche vom Rand bzw. Klickpunkt aus' },
+  { value: false, label: 'Everywhere', title: 'Remove every matching pixel in the image' },
+  { value: true, label: 'Connected', title: 'Only the area connected to the border or the clicked point' },
 ]
 
 function startPicker(mode) {
@@ -31,7 +31,7 @@ function addManualColor() {
   store.addKeyColor('#ffffff')
 }
 
-/** Farbe an Ort und Stelle ersetzen, damit die Reihenfolge erhalten bleibt. */
+/** Replace the color in place so the order stays intact. */
 function updateKeyColor(index, hex) {
   const rgb = hexToRgb(hex)
   if (!rgb) return
@@ -43,15 +43,15 @@ function updateKeyColor(index, hex) {
   <div class="panel">
     <section class="panel-section">
       <div class="section-title">
-        <span>Hintergrund entfernen</span>
+        <span>Remove background</span>
         <button v-if="hasKeys" type="button" class="link-btn" @click="resetKeying">
-          zuruecksetzen
+          reset
         </button>
       </div>
 
       <div class="stack">
         <AppButton icon="wand" block @click="store.autoDetectBackground()">
-          Hintergrund automatisch erkennen
+          Detect background automatically
         </AppButton>
 
         <div class="picker-row">
@@ -59,35 +59,35 @@ function updateKeyColor(index, hex) {
             icon="eyedropper"
             block
             :active="store.eyedropperMode === 'add'"
-            title="Farbe im Bild aufnehmen und zur Liste hinzufuegen"
+            title="Pick a color from the image and add it to the list"
             @click="startPicker('add')"
           >
-            Farbe aufnehmen
+            Pick color
           </AppButton>
           <AppButton
             icon="plus"
-            title="Farbe manuell hinzufuegen"
+            title="Add a color manually"
             @click="addManualColor"
           />
         </div>
 
         <p v-if="store.eyedropperMode" class="hint hint--accent">
-          Die Vorschau zeigt jetzt das Original. Klicke die Hintergrundfarbe an.
+          The preview now shows the original. Click the background color.
         </p>
       </div>
     </section>
 
     <section class="panel-section">
       <div class="section-title">
-        <span>Transparente Farben ({{ keying.keys.length }})</span>
+        <span>Transparent colors ({{ keying.keys.length }})</span>
         <button v-if="hasKeys" type="button" class="link-btn" @click="store.clearKeyColors()">
-          alle entfernen
+          remove all
         </button>
       </div>
 
       <p v-if="!hasKeys" class="hint">
-        Noch keine Farbe gewaehlt. Nimm mit der Pipette die Hintergrundfarbe auf - alle
-        aehnlichen Pixel werden dann transparent.
+        No color selected yet. Use the eyedropper on the background - every similar
+        pixel then becomes transparent.
       </p>
 
       <ul v-else class="keys">
@@ -107,7 +107,7 @@ function updateKeyColor(index, hex) {
             icon="trash"
             variant="danger"
             size="sm"
-            title="Farbe entfernen"
+            title="Remove color"
             @click="store.removeKeyColor(index)"
           />
         </li>
@@ -115,64 +115,64 @@ function updateKeyColor(index, hex) {
     </section>
 
     <section class="panel-section" :class="{ 'is-muted': !hasKeys }">
-      <div class="section-title"><span>Auswahl</span></div>
+      <div class="section-title"><span>Selection</span></div>
       <div class="stack">
         <SegmentedControl v-model="keying.contiguous" :options="modeOptions" :disabled="!hasKeys" />
         <p v-if="keying.contiguous" class="hint">
-          Es wird nur die Flaeche entfernt, die mit dem Bildrand bzw. dem angeklickten Punkt
-          verbunden ist. Gleiche Farben innerhalb des Logos bleiben erhalten.
+          Only the area connected to the image border or the clicked point is removed.
+          Matching colors inside the logo stay untouched.
         </p>
 
         <SliderControl
           v-model="keying.tolerance"
-          label="Toleranz"
+          label="Tolerance"
           unit="%"
           :min="0"
           :max="100"
           :step="0.5"
           :reset-value="DEFAULT_KEYING.tolerance"
           :disabled="!hasKeys"
-          hint="Wie stark eine Farbe abweichen darf, um noch entfernt zu werden"
+          hint="How far a color may deviate and still be removed"
         />
         <SliderControl
           v-model="keying.softness"
-          label="Weicher Uebergang"
+          label="Soft transition"
           unit="%"
           :min="0"
           :max="50"
           :step="0.5"
           :reset-value="DEFAULT_KEYING.softness"
           :disabled="!hasKeys"
-          hint="Breite des halbtransparenten Uebergangs"
+          hint="Width of the semi-transparent transition"
         />
       </div>
     </section>
 
     <section class="panel-section" :class="{ 'is-muted': !hasKeys }">
-      <div class="section-title"><span>Kanten</span></div>
+      <div class="section-title"><span>Edges</span></div>
       <div class="stack">
         <SliderControl
           v-model="keying.despill"
-          label="Farbsaum entfernen"
+          label="Remove color fringe"
           unit="%"
           :min="0"
           :max="100"
           :reset-value="DEFAULT_KEYING.despill"
           :disabled="!hasKeys"
-          hint="Rechnet die Hintergrundfarbe aus halbtransparenten Randpixeln heraus"
+          hint="Removes the background color from semi-transparent edge pixels"
         />
         <SliderControl
           v-model="keying.edgeContract"
-          label="Maske schrumpfen"
+          label="Shrink mask"
           :min="-100"
           :max="100"
           :reset-value="0"
           :disabled="!hasKeys"
-          hint="Positiv entfernt Restsaeume, negativ haelt mehr vom Motiv"
+          hint="Positive removes leftover fringes, negative keeps more of the subject"
         />
         <SliderControl
           v-model="keying.feather"
-          label="Weiche Kante"
+          label="Feather"
           unit="px"
           :min="0"
           :max="10"
@@ -184,11 +184,11 @@ function updateKeyColor(index, hex) {
     </section>
 
     <section class="panel-section">
-      <div class="section-title"><span>Ergebnis pruefen</span></div>
+      <div class="section-title"><span>Check the result</span></div>
       <ToggleSwitch
         v-model="store.showOriginal"
-        label="Original einblenden"
-        hint="Zeigt das unbearbeitete Bild zum Vergleich"
+        label="Show original"
+        hint="Displays the untouched image for comparison"
       />
     </section>
   </div>
@@ -219,11 +219,11 @@ function updateKeyColor(index, hex) {
 }
 
 .link-btn:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .hint--accent {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .keys {
