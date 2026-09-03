@@ -1,0 +1,469 @@
+import { computed, markRaw, ref, shallowRef, watch } from 'vue'
+import { defineStore } from 'pinia'
+import { DEFAULT_SETTINGS, cloneSettings, processImage } from '../lib/pipeline.js'
+import { detectBackgroundColor, loadImageFile, sampleColorAt } from '../lib/imageLoader.js'
+import { canvasToBlob, renderSizeSet, renderToSize, slugify, EXPORT_FORMATS } from '../lib/exportImage.js'
+import { createIcoBlob } from '../lib/ico.js'
+import { createZip, downloadBlob } from '../lib/download.js'
+import { getPreset } from '../lib/presets.js'
+import { hexToRgb, rgbToHex } from '../lib/color.js'
+
+/** Obere und untere Kantenlaenge, mit der die Vorschau gerechnet wird. */
+const PREVIEW_MAX_SIZE = 1280
+const PREVIEW_MIN_SIZE = 560
+
+const HISTORY_LIMIT = 50
+const PRESET_STORAGE_KEY = 'logo-creator:presets'
+
+function loadStoredPresets() {
+  try {
+    const raw = localStorage.getItem(PRESET_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+export const useEditorStore = defineStore('editor', () => {
+  // --- Quelle & Ergebnis -------------------------------------------------
+  const source = shallowRef(null) // { name, width, height, imageData, ... }
+  const previewCanvas = shallowRef(null)
+  const originalCanvas = shallowRef(null)
+  const renderVersion = ref(0)
+  const isLoading = ref(false)
+  const isRendering = ref(false)
+  const notice = ref(null) // { type: 'info'|'error'|'success', message }
+
+  // --- Einstellungen -----------------------------------------------------
+  const settings = ref(cloneSettings(DEFAULT_SETTINGS))
+
+  // --- Werkzeuge / UI ----------------------------------------------------
+  const activeTool = ref('background') // background | adjust | effects | transform
+  const eyedropperMode = ref(null) // null | 'add' | 'replace'
+  const showOriginal = ref(false)
+  const zoom = ref(1)
+  const fitToView = ref(true)
+  const savedPresets = ref(loadStoredPresets())
+
+  // --- History -----------------------------------------------------------
+  const undoStack = ref([])
+  const redoStack = ref([])
+  let historyTimer = null
+  let lastCommitted = JSON.stringify(settings.value)
+
+  /** Faktor, mit dem die Vorschau gegenueber dem Original verkleinert wurde. */
+  const previewScale = ref(1)
+  /** Aktuell erlaubte Kantenlaenge der Vorschauberechnung (passt sich der Leistung an). */
+  const previewBudget = ref(PREVIEW_MAX_SIZE)
+
+  const hasImage = computed(() => source.value !== null)
+  const canUndo = computed(() => undoStack.value.length > 0)
+  const canRedo = computed(() => redoStack.value.length > 0)
+  const keyColors = computed(() => settings.value.keying.keys)
+  const outputSize = computed(() => {
+    const canvas = previewCanvas.value
+    if (!canvas || !source.value) return null
+    // Die Vorschau ist skaliert - die echte Ausgabegroesse daraus hochrechnen.
+    return {
+      width: Math.round(canvas.width / previewScale.value),
+      height: Math.round(canvas.height / previewScale.value),
+    }
+  })
+
+  function setNotice(type, message, timeout = 4000) {
+    notice.value = { type, message }
+    if (timeout) {
+      setTimeout(() => {
+        if (notice.value && notice.value.message === message) notice.value = null
+      }, timeout)
+    }
+  }
+
+  function dismissNotice() {
+    notice.value = null
+  }
+
+  // --- Rendern -----------------------------------------------------------
+  let renderHandle = null
+  let qualityTimer = null
+
+  function scheduleRender() {
+    if (!source.value) return
+    if (renderHandle) cancelAnimationFrame(renderHandle)
+    if (qualityTimer) clearTimeout(qualityTimer)
+    isRendering.value = true
+    renderHandle = requestAnimationFrame(() => {
+      renderHandle = null
+      renderNow()
+      // Nach der Interaktion einmal in voller Vorschauqualitaet nachziehen.
+      if (previewBudget.value < PREVIEW_MAX_SIZE) {
+        qualityTimer = setTimeout(() => renderNow(true), 500)
+      }
+    })
+  }
+
+  function renderNow(highQuality = false) {
+    if (!source.value) return
+    try {
+      const longest = Math.max(source.value.width, source.value.height)
+      const budget = highQuality ? PREVIEW_MAX_SIZE : previewBudget.value
+      previewScale.value = longest > budget ? budget / longest : 1
+
+      const started = performance.now()
+      const canvas = processImage(source.value.imageData, settings.value, { maxSize: budget })
+      const duration = performance.now() - started
+
+      // Vorschauaufloesung an die tatsaechliche Rechenzeit anpassen: teure
+      // Kombinationen (Kontur, Weichzeichner) bleiben so bedienbar.
+      if (!highQuality) {
+        if (duration > 90) {
+          previewBudget.value = Math.max(PREVIEW_MIN_SIZE, Math.round(budget * 0.75))
+        } else if (duration < 25 && budget < PREVIEW_MAX_SIZE) {
+          previewBudget.value = Math.min(PREVIEW_MAX_SIZE, Math.round(budget * 1.3))
+        }
+      }
+
+      previewCanvas.value = markRaw(canvas)
+      renderVersion.value++
+    } catch (error) {
+      setNotice('error', 'Verarbeitung fehlgeschlagen: ' + error.message, 6000)
+    } finally {
+      isRendering.value = false
+    }
+  }
+
+  /** Rendert die Datei in voller Aufloesung - nur fuer den Export. */
+  function renderFullResolution() {
+    if (!source.value) throw new Error('Kein Bild geladen.')
+    return processImage(source.value.imageData, settings.value)
+  }
+
+  watch(
+    settings,
+    () => {
+      scheduleRender()
+      queueHistoryCommit()
+    },
+    { deep: true },
+  )
+
+  // --- Datei laden -------------------------------------------------------
+  async function loadFile(file) {
+    isLoading.value = true
+    try {
+      const loaded = await loadImageFile(file)
+      source.value = markRaw(loaded)
+      previewScale.value = 1
+      previewBudget.value = PREVIEW_MAX_SIZE
+
+      const original = document.createElement('canvas')
+      original.width = loaded.width
+      original.height = loaded.height
+      original.getContext('2d').putImageData(loaded.imageData, 0, 0)
+      originalCanvas.value = markRaw(original)
+
+      resetSettings({ silent: true })
+      undoStack.value = []
+      redoStack.value = []
+      lastCommitted = JSON.stringify(settings.value)
+      fitToView.value = true
+      zoom.value = 1
+
+      renderNow()
+
+      if (loaded.scaled) {
+        setNotice(
+          'info',
+          'Bild auf ' + loaded.width + ' x ' + loaded.height + ' px reduziert (Arbeitsgrenze).',
+          6000,
+        )
+      }
+    } catch (error) {
+      setNotice('error', error.message, 8000)
+      throw error
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  function closeImage() {
+    source.value = null
+    previewCanvas.value = null
+    originalCanvas.value = null
+    resetSettings({ silent: true })
+    undoStack.value = []
+    redoStack.value = []
+  }
+
+  function resetSettings({ silent = false } = {}) {
+    settings.value = cloneSettings(DEFAULT_SETTINGS)
+    if (!silent) setNotice('info', 'Alle Einstellungen zurueckgesetzt.')
+  }
+
+  // --- Hintergrund entfernen --------------------------------------------
+  function addKeyColor(hex, { replace = false } = {}) {
+    const rgb = hexToRgb(hex)
+    if (!rgb) {
+      setNotice('error', 'Ungueltiger Farbwert: ' + hex)
+      return
+    }
+    const entry = { hex: rgbToHex(rgb.r, rgb.g, rgb.b), ...rgb }
+    if (replace) {
+      settings.value.keying.keys = [entry]
+      settings.value.keying.seeds = []
+      return
+    }
+    if (settings.value.keying.keys.some((key) => key.hex === entry.hex)) return
+    settings.value.keying.keys.push(entry)
+  }
+
+  function removeKeyColor(index) {
+    settings.value.keying.keys.splice(index, 1)
+    if (!settings.value.keying.keys.length) settings.value.keying.seeds = []
+  }
+
+  function clearKeyColors() {
+    settings.value.keying.keys = []
+    settings.value.keying.seeds = []
+  }
+
+  /** Farbe an einer Bildkoordinate aufnehmen (Pipette). */
+  function pickColorAtSource(x, y, { replace = false, addSeed = false } = {}) {
+    if (!source.value) return null
+    const sample = sampleColorAt(source.value.imageData, x, y, 1)
+    if (!sample) {
+      setNotice('error', 'An dieser Stelle ist bereits alles transparent.')
+      return null
+    }
+    addKeyColor(sample.hex, { replace })
+    if (addSeed && settings.value.keying.contiguous) {
+      settings.value.keying.seeds.push({ x: Math.round(x), y: Math.round(y) })
+    }
+    return sample
+  }
+
+  function autoDetectBackground() {
+    if (!source.value) return
+    const detected = detectBackgroundColor(source.value.imageData)
+    if (!detected) {
+      setNotice('error', 'Es konnte keine Hintergrundfarbe erkannt werden.')
+      return
+    }
+    addKeyColor(detected.hex, { replace: true })
+    setNotice(
+      'success',
+      'Hintergrundfarbe erkannt: ' +
+        detected.hex +
+        ' (' +
+        Math.round(detected.ratio * 100) +
+        ' % des Randes).',
+    )
+  }
+
+  // --- History -----------------------------------------------------------
+  function queueHistoryCommit() {
+    if (historyTimer) clearTimeout(historyTimer)
+    historyTimer = setTimeout(commitHistory, 350)
+  }
+
+  function commitHistory() {
+    const serialized = JSON.stringify(settings.value)
+    if (serialized === lastCommitted) return
+    undoStack.value.push(lastCommitted)
+    if (undoStack.value.length > HISTORY_LIMIT) undoStack.value.shift()
+    redoStack.value = []
+    lastCommitted = serialized
+  }
+
+  function undo() {
+    if (historyTimer) {
+      clearTimeout(historyTimer)
+      historyTimer = null
+      commitHistory()
+    }
+    const previous = undoStack.value.pop()
+    if (!previous) return
+    redoStack.value.push(JSON.stringify(settings.value))
+    settings.value = JSON.parse(previous)
+    lastCommitted = previous
+  }
+
+  function redo() {
+    const next = redoStack.value.pop()
+    if (!next) return
+    undoStack.value.push(JSON.stringify(settings.value))
+    settings.value = JSON.parse(next)
+    lastCommitted = next
+  }
+
+  // --- Einstellungs-Presets ---------------------------------------------
+  function persistPresets() {
+    try {
+      localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(savedPresets.value))
+    } catch (error) {
+      setNotice('error', 'Preset konnte nicht gespeichert werden: ' + error.message)
+    }
+  }
+
+  function savePreset(name) {
+    const trimmed = (name || '').trim()
+    if (!trimmed) {
+      setNotice('error', 'Bitte einen Namen fuer das Preset angeben.')
+      return
+    }
+    const entry = {
+      id: Date.now().toString(36),
+      name: trimmed,
+      settings: JSON.parse(JSON.stringify(settings.value)),
+    }
+    const existing = savedPresets.value.findIndex((preset) => preset.name === trimmed)
+    if (existing >= 0) savedPresets.value.splice(existing, 1, entry)
+    else savedPresets.value.push(entry)
+    persistPresets()
+    setNotice('success', 'Preset "' + trimmed + '" gespeichert.')
+  }
+
+  function applySavedPreset(id) {
+    const preset = savedPresets.value.find((entry) => entry.id === id)
+    if (!preset) return
+    settings.value = JSON.parse(JSON.stringify(preset.settings))
+    setNotice('success', 'Preset "' + preset.name + '" angewendet.')
+  }
+
+  function deleteSavedPreset(id) {
+    savedPresets.value = savedPresets.value.filter((entry) => entry.id !== id)
+    persistPresets()
+  }
+
+  // --- Export ------------------------------------------------------------
+  const baseName = computed(() => slugify(source.value?.name))
+
+  async function exportSingle({ size = null, format = 'png', quality = 0.92, background = null }) {
+    if (!source.value) return
+    const canvas = renderFullResolution()
+    const config = EXPORT_FORMATS[format] || EXPORT_FORMATS.png
+    const fill = config.supportsAlpha ? background : background || '#ffffff'
+
+    let target = canvas
+    if (size) target = renderToSize(canvas, size, size, { background: fill })
+    else if (fill) target = renderToSize(canvas, canvas.width, canvas.height, { background: fill })
+
+    const blob = await canvasToBlob(target, format, quality)
+    const suffix = size ? '-' + size : ''
+    downloadBlob(blob, baseName.value + suffix + '.' + config.extension)
+    setNotice('success', 'Export erstellt: ' + baseName.value + suffix + '.' + config.extension)
+  }
+
+  async function exportIco(sizes) {
+    if (!source.value) return
+    const canvas = renderFullResolution()
+    const blob = await createIcoBlob(canvas, sizes)
+    downloadBlob(blob, baseName.value + '.ico')
+    setNotice('success', 'ICO mit ' + sizes.length + ' Groessen erstellt.')
+  }
+
+  async function exportCustomSizes(sizes, { format = 'png', quality = 0.92, background = null }) {
+    if (!source.value || !sizes.length) return
+    const canvas = renderFullResolution()
+    const files = await renderSizeSet(canvas, sizes, {
+      format,
+      quality,
+      background,
+      baseName: baseName.value,
+    })
+    if (files.length === 1) {
+      downloadBlob(files[0].blob, files[0].name)
+    } else {
+      const zip = await createZip(files)
+      downloadBlob(zip, baseName.value + '-icons.zip')
+    }
+    setNotice('success', files.length + ' Datei(en) exportiert.')
+  }
+
+  async function exportPreset(presetId, { format = 'png', quality = 0.92, background = null } = {}) {
+    if (!source.value) return
+    const preset = getPreset(presetId)
+    if (!preset) throw new Error('Unbekanntes Preset: ' + presetId)
+
+    const canvas = renderFullResolution()
+    const files = []
+
+    for (const entry of preset.pngs || []) {
+      const target = renderToSize(canvas, entry.size, entry.size, { background })
+      files.push({ name: entry.name, blob: await canvasToBlob(target, format, quality) })
+    }
+
+    if (preset.ico) {
+      files.push({ name: preset.ico.name, blob: await createIcoBlob(canvas, preset.ico.sizes) })
+    }
+
+    for (const entry of preset.text || []) {
+      files.push({ name: entry.name, text: entry.build(baseName.value) })
+    }
+
+    const zip = await createZip(files)
+    downloadBlob(zip, baseName.value + '-' + preset.id + '.zip')
+    setNotice('success', preset.name + ' exportiert (' + files.length + ' Dateien).')
+  }
+
+  /** Kopiert das Ergebnis als PNG in die Zwischenablage. */
+  async function copyToClipboard() {
+    if (!source.value) return
+    if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+      setNotice('error', 'Die Zwischenablage wird von diesem Browser nicht unterstuetzt.')
+      return
+    }
+    const blob = await canvasToBlob(renderFullResolution(), 'png')
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+    setNotice('success', 'PNG in die Zwischenablage kopiert.')
+  }
+
+  return {
+    // State
+    source,
+    previewCanvas,
+    originalCanvas,
+    renderVersion,
+    isLoading,
+    isRendering,
+    notice,
+    settings,
+    activeTool,
+    eyedropperMode,
+    showOriginal,
+    zoom,
+    fitToView,
+    savedPresets,
+    // Getter
+    hasImage,
+    canUndo,
+    canRedo,
+    keyColors,
+    outputSize,
+    baseName,
+    // Actions
+    setNotice,
+    dismissNotice,
+    loadFile,
+    closeImage,
+    resetSettings,
+    addKeyColor,
+    removeKeyColor,
+    clearKeyColors,
+    pickColorAtSource,
+    autoDetectBackground,
+    scheduleRender,
+    renderFullResolution,
+    undo,
+    redo,
+    savePreset,
+    applySavedPreset,
+    deleteSavedPreset,
+    exportSingle,
+    exportIco,
+    exportCustomSizes,
+    exportPreset,
+    copyToClipboard,
+  }
+})
