@@ -8,7 +8,14 @@ export const useUiStore = defineStore('ui', () => {
   const mode = ref('view') // view | images | logo
   const notice = ref(null) // { type: 'info' | 'error' | 'success', message }
 
+  // Beide Seitenpanele lassen sich einklappen - dann gehoert die Flaeche dem Bild.
+  const panels = ref({ tools: true, export: true })
+
   let noticeTimer = null
+
+  function togglePanel(key) {
+    panels.value[key] = !panels.value[key]
+  }
 
   function setMode(next) {
     mode.value = next
@@ -31,5 +38,5 @@ export const useUiStore = defineStore('ui', () => {
     notice.value = null
   }
 
-  return { mode, notice, setMode, setNotice, dismissNotice }
+  return { mode, notice, panels, setMode, togglePanel, setNotice, dismissNotice }
 })

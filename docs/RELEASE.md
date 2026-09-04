@@ -17,7 +17,11 @@ belegt noch keinen erfolgreichen GitHub-Actions-Lauf.
 
 ## Entscheidungen vor der ersten öffentlichen Version
 
-- Herausgeber/Autor, rechtliche Produktangaben, Lizenz des eigenen Anwendungscodes und
+Herausgeber: **Frederik Morbe**. In `package.json` als `author.name` hinterlegt;
+electron-builder übernimmt den Namen in die Windows-Herausgeber-/Hersteller-Metadaten.
+Das ist keine digitale Signierung. Bereits gebaute Pakete müssen neu erstellt werden.
+
+- Rechtliche Produktangaben, Lizenz des eigenen Anwendungscodes und
   die technische App-ID `io.imejii.viewer` verbindlich freigeben.
 - Windows-Signierungsidentität beschaffen. Zugangsdaten nur als Build-Secrets, niemals im Repository.
   `npm run dist:win:signed` bricht ohne erfolgreiche Signierung ab.
@@ -58,8 +62,21 @@ Grundlagen: [Electron Security](https://www.electronjs.org/docs/latest/tutorial/
 
 ## Bewusste Produktgrenzen
 
-Keine automatische Wiederherstellung ungesicherter Bildbearbeitungen nach Prozessabsturz.
-Keine originalgetreue Animation, Metadaten-/GPS- oder Farbprofilübernahme beim Rasterexport.
+Automatische lokale Sicherungen und portable `.imejii`-Projekte sind implementiert.
+Änderungen vor Abschluss der Sicherung können bei Prozessabsturz verloren gehen.
+Keine originalgetreue Animation; erste Seite bei HEIF/TIFF, kein RAW-/HDR-/16-Bit-Arbeitsworkflow.
+Rasterexport in sRGB mit passendem ICC und EXIF-Allowlist; GPS nur auf ausdrückliches Opt-in.
 40 MP / 16.384 px / 128 MiB Eingabegrenzen; Logo-Arbeitsauflösung bis 4096 px.
 Nicht alle Eingabeformate lassen sich vor dem Browserdecoder vollständig per Header prüfen.
 Diese Grenzen und ein kleiner synthetischer Lasttest ersetzen keinen Langzeittest auf Zielhardware.
+
+## Zusätzliche Foto-Release-Prüfung
+
+- [Foto-Funktionsumfang und Einschränkungen](PHOTO-FEATURES.md) abnehmen; insbesondere HEIC/TIFF
+  mit eigenen Kamera-/Smartphone-Dateien und Referenz-Farbsoftware prüfen.
+- `.imejii`-Projekte sichern, öffnen und nach echtem App-/Betriebssystem-Neustart prüfen;
+  Speicherquote, volles Laufwerk und Update des App-Profils testen.
+- **HEIC-LGPL-Gate:** gebündelte Quellen/Versionen, vollständige Lizenztexte, Corresponding Sources,
+  Rekombinierbarkeit und gegebenenfalls Installationsinformationen prüfen/bereitstellen.
+  Die bisherigen npm-Notices allein decken eingebettete native Decoder nicht vollständig ab.
+- npm-Advisory-Audit vor Veröffentlichung wiederholen: der Dienst lieferte beim Foto-Ausbau Timeouts.

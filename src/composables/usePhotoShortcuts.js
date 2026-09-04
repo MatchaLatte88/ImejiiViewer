@@ -41,6 +41,7 @@ export function usePhotoShortcuts(viewerRef, { editing = false } = {}) {
         break
       case 'Escape':
         if (editing && store.cropMode) store.cancelCrop()
+        else if (editing && store.eyedropperMode) store.eyedropperMode = false
         break
       case 'Delete':
         if (store.activeId !== null) store.remove(store.activeId)

@@ -7,6 +7,14 @@ export const DEFAULT_ADJUSTMENTS = {
   contrast: 0, // -100..100
   gamma: 100, // 10..300 (100 = neutral)
   temperature: 0, // -100 (kalt) .. 100 (warm)
+  tint: 0,
+  shadows: 0,
+  highlights: 0,
+  whites: 0,
+  blacks: 0,
+  whiteBalanceR: 1,
+  whiteBalanceG: 1,
+  whiteBalanceB: 1,
   saturation: 0, // -100..100
   vibrance: 0, // -100..100
   hue: 0, // -180..180
@@ -32,14 +40,16 @@ function buildChannelLuts(a) {
   const gamma = Math.max(0.01, a.gamma / 100)
   const invGamma = 1 / gamma
   const temp = a.temperature / 100
-  const offsets = [temp * 32, temp * 6, -temp * 32]
+  const tint = (a.tint || 0) / 100
+  const offsets = [temp * 32 + tint * 12, temp * 6 - tint * 24, -temp * 32 + tint * 12]
+  const gains = [a.whiteBalanceR, a.whiteBalanceG, a.whiteBalanceB].map(v => Math.max(0.25, Math.min(4, Number(v) || 1)))
 
   const luts = [new Uint8ClampedArray(256), new Uint8ClampedArray(256), new Uint8ClampedArray(256)]
   for (let channel = 0; channel < 3; channel++) {
     const lut = luts[channel]
     const offset = offsets[channel]
     for (let v = 0; v < 256; v++) {
-      let value = v * exposure + offset + brightness
+      let value = v * gains[channel] * exposure + offset + brightness
       value = contrastFactor * (value - 128) + 128
       value = 255 * Math.pow(Math.max(0, value) / 255, invGamma)
       lut[v] = clamp255(value)
@@ -72,6 +82,15 @@ export function applyAdjustments(imageData, adjustments) {
     let r = lutR[data[i]]
     let g = lutG[data[i + 1]]
     let b = lutB[data[i + 2]]
+
+    // Luminance-weighted adjustments preserve channel relationships. They cannot
+    // recover detail that was already clipped in the source's 8-bit pixels.
+    const luma = luminance(r, g, b) / 255
+    const shadowWeight = (1 - luma) ** 2 * Math.min(1, luma * 8)
+    const highlightWeight = luma ** 2 * Math.min(1, (1 - luma) * 8)
+    const delta = ((a.shadows || 0) * shadowWeight + (a.highlights || 0) * highlightWeight) * 1.1
+      + (a.whites || 0) * luma ** 4 * 1.2 + (a.blacks || 0) * (1 - luma) ** 4 * 1.2
+    r = clamp255(r + delta); g = clamp255(g + delta); b = clamp255(b + delta)
 
     if (needsHsl) {
       const hsl = rgbToHsl(r, g, b)

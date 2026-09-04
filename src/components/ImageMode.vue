@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useLibraryStore } from '../stores/library.js'
+import { useUiStore } from '../stores/ui.js'
 import { usePhotoShortcuts } from '../composables/usePhotoShortcuts.js'
 import { ACCEPTED_EXTENSIONS } from '../lib/imageLoader.js'
 import PhotoViewer from './PhotoViewer.vue'
@@ -19,6 +20,7 @@ const props = defineProps({
 const emit = defineEmits(['open-files'])
 
 const store = useLibraryStore()
+const ui = useUiStore()
 const viewerRef = ref(null)
 const activeTool = ref('adjust')
 
@@ -32,6 +34,15 @@ const activePanel = computed(
   () => TOOLS.find((tool) => tool.id === activeTool.value)?.component ?? PhotoAdjustPanel,
 )
 
+/** Ein erneuter Klick auf das aktive Werkzeug klappt sein Panel weg. */
+function selectTool(id) {
+  if (activeTool.value === id) ui.togglePanel('tools')
+  else {
+    activeTool.value = id
+    ui.panels.tools = true
+  }
+}
+
 usePhotoShortcuts(viewerRef, { editing: true })
 </script>
 
@@ -44,16 +55,28 @@ usePhotoShortcuts(viewerRef, { editing: true })
           :key="tool.id"
           type="button"
           class="toolbar__item"
-          :class="{ 'is-active': activeTool === tool.id }"
+          :class="{ 'is-active': ui.panels.tools && activeTool === tool.id }"
           :title="tool.label"
-          @click="activeTool = tool.id"
+          @click="selectTool(tool.id)"
         >
           <AppIcon :name="tool.icon" :size="18" />
           <span>{{ tool.label }}</span>
         </button>
+
+        <button
+          type="button"
+          class="toolbar__item toolbar__collapse"
+          :class="{ 'is-open': ui.panels.tools }"
+          :title="ui.panels.tools ? 'Hide the tool panel' : 'Show the tool panel'"
+          :aria-expanded="ui.panels.tools"
+          @click="ui.togglePanel('tools')"
+        >
+          <AppIcon name="chevron" :size="18" />
+          <span>{{ ui.panels.tools ? 'Hide' : 'Show' }}</span>
+        </button>
       </nav>
 
-      <section class="sidebar" :inert="store.isDecoding">
+      <section v-show="ui.panels.tools" class="sidebar" :inert="store.isDecoding">
         <component :is="activePanel" />
       </section>
 
@@ -62,7 +85,18 @@ usePhotoShortcuts(viewerRef, { editing: true })
         <LibraryStrip @add-files="emit('open-files')" />
       </div>
 
-      <PhotoExportPanel />
+      <button
+        type="button"
+        class="panel-toggle"
+        :class="{ 'is-open': ui.panels.export }"
+        :title="ui.panels.export ? 'Hide the export panel' : 'Show the export panel'"
+        :aria-expanded="ui.panels.export"
+        @click="ui.togglePanel('export')"
+      >
+        <AppIcon name="chevron" :size="14" />
+      </button>
+
+      <PhotoExportPanel v-show="ui.panels.export" />
     </template>
 
     <div v-else class="empty" :class="{ 'is-dragging': props.isDragging }">
@@ -139,6 +173,36 @@ usePhotoShortcuts(viewerRef, { editing: true })
 .toolbar__item.is-active {
   background: var(--accent-soft);
   color: var(--accent-text);
+}
+
+/* Ein- und Ausklappen: der Pfeil zeigt, wohin das Panel verschwindet. */
+.toolbar__collapse {
+  margin-top: auto;
+}
+
+.toolbar__collapse.is-open svg {
+  transform: rotate(180deg);
+}
+
+.panel-toggle {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  flex: none;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-subtle);
+  transition: background var(--transition), color var(--transition);
+}
+
+.panel-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.panel-toggle:not(.is-open) svg {
+  transform: rotate(180deg);
 }
 
 .sidebar {

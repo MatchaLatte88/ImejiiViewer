@@ -1,0 +1,65 @@
+{
+  "results": [
+    {
+      "name": "Production app starts via secure custom protocol with sandboxed bridge",
+      "status": "PASS"
+    },
+    {
+      "name": "Every native file operation rejects ungranted renderer paths",
+      "status": "PASS"
+    },
+    {
+      "name": "Preload refuses a fabricated File path and does not expose ipcRenderer",
+      "status": "PASS"
+    },
+    {
+      "name": "Real native open returns valid selections alongside per-file errors",
+      "status": "PASS"
+    },
+    {
+      "name": "Production CSP blocks inline script execution",
+      "status": "PASS"
+    },
+    {
+      "name": "Actual renderer edit updates Undo and can be reversed",
+      "status": "PASS"
+    },
+    {
+      "name": "Real export uses the main-process save path and PNG bytes",
+      "status": "PASS"
+    },
+    {
+      "name": "Color-only photo edits render through the real worker",
+      "status": "PASS"
+    },
+    {
+      "name": "Mode handover uses the actually loaded logo source, not stale history",
+      "status": "PASS"
+    },
+    {
+      "name": "Real folder batch creates a unique child and reports success",
+      "status": "PASS"
+    },
+    {
+      "name": "Rendered numeric controls and thumbnails have accessible names",
+      "status": "PASS"
+    },
+    {
+      "name": "Dirty window close asks and keeps the window on cancellation",
+      "status": "PASS"
+    },
+    {
+      "name": "Native TIFF export contains real TIFF bytes and portable projects keep original data",
+      "status": "PASS"
+    },
+    {
+      "name": "Local edits survive renderer restart in the production app profile",
+      "status": "PASS"
+    },
+    {
+      "name": "HEIC decoder works under the unmodified production CSP",
+      "status": "PASS"
+    }
+  ],
+  "consoleErrors": []
+}

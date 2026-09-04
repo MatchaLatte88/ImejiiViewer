@@ -4,11 +4,18 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Bildbetrachter mit Werkzeugkasten: ansehen, bearbeiten, konvertieren und freistellen - alles lokal.",
+  "author": {
+    "name": "Frederik Morbe"
+  },
   "scripts": {
     "dev": "vite",
+    "predev": "node scripts/prepare-codecs.mjs",
+    "prebuild": "node scripts/prepare-codecs.mjs",
+    "pretest:renderer": "node scripts/prepare-codecs.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "desktop": "node scripts/electron-dev.mjs",
+    "predesktop": "node scripts/prepare-codecs.mjs",
     "desktop:preview": "npm run build && electron .",
     "electron": "electron .",
     "lint": "eslint . --max-warnings=0",
@@ -23,8 +30,11 @@
     "verify:package": "node scripts/verify-package.mjs"
   },
   "dependencies": {
+    "exifr": "7.1.3",
+    "heic-to": "1.5.2",
     "jszip": "^3.10.1",
     "pinia": "^3.0.3",
+    "utif2": "4.1.0",
     "vue": "^3.5.13"
   },
   "devDependencies": {

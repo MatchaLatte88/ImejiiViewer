@@ -5,3 +5,4 @@ dist
 .vite
 release/
 build/
+src/generated/

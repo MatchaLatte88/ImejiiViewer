@@ -1,7 +1,10 @@
 import { DEFAULT_ADJUSTMENTS, applyAdjustments } from './adjustments.js'
+import { applyCurve, curveIsActive, normalizeCurve } from './photoCurves.js'
+import { DEFAULT_COLOR_SHIFT, applyColorShifts, isActiveShift } from './colorShifts.js'
 import { applyBlur, applySharpen } from './effects.js'
 import { canvasToImageData, createCanvas, imageDataToCanvas, resizeCanvas } from './transform.js'
 import { clamp, clamp255 } from './color.js'
+import { applyLocalLight, normalizeLocalMasks } from './localLight.js'
 
 /** Bearbeitungszustand eines einzelnen Bildes. */
 export const DEFAULT_EDITS = {
@@ -11,6 +14,9 @@ export const DEFAULT_EDITS = {
   straighten: 0, // -45..45 Grad Feinkorrektur, schneidet automatisch zu
   crop: null, // { x, y, width, height } als Anteile 0..1 nach Drehung
   adjustments: { ...DEFAULT_ADJUSTMENTS },
+  curve: [0, 64, 128, 192, 255],
+  localMasks: [],
+  colorShifts: [], // gezielte Farbaenderungen, siehe colorShifts.js
   sharpen: 0, // 0..100
   blur: 0, // 0..20 px
   vignette: 0, // 0..100
@@ -18,12 +24,28 @@ export const DEFAULT_EDITS = {
 }
 
 export function createEdits(overrides = {}) {
+  if (!overrides || typeof overrides !== 'object') overrides = {}
+  const number = (value, fallback, min, max) => Number.isFinite(value) ? clamp(value, min, max) : fallback
+  const adjustments = Object.fromEntries(Object.entries(DEFAULT_ADJUSTMENTS).map(([key, fallback]) => [key,
+    typeof fallback === 'boolean' ? overrides.adjustments?.[key] === true :
+      number(overrides.adjustments?.[key], fallback, key.startsWith('whiteBalance') ? 0.25 : key === 'gamma' ? 10 : key === 'grayscale' ? 0 : key === 'hue' ? -180 : -100,
+        key.startsWith('whiteBalance') ? 4 : key === 'gamma' ? 300 : key === 'hue' ? 180 : 100)]))
+  const crop = overrides.crop && { x: number(overrides.crop.x, 0, 0, 0.999), y: number(overrides.crop.y, 0, 0, 0.999) }
+  if (crop) { crop.width = number(overrides.crop.width, 1 - crop.x, 0.001, 1 - crop.x); crop.height = number(overrides.crop.height, 1 - crop.y, 0.001, 1 - crop.y) }
   return {
     ...DEFAULT_EDITS,
-    ...overrides,
-    adjustments: { ...DEFAULT_ADJUSTMENTS, ...(overrides.adjustments || {}) },
-    resize: { ...DEFAULT_EDITS.resize, ...(overrides.resize || {}) },
-    crop: overrides.crop ? { ...overrides.crop } : null,
+    rotate: [0, 90, 180, 270].includes(overrides.rotate) ? overrides.rotate : 0,
+    flipH: overrides.flipH === true, flipV: overrides.flipV === true,
+    straighten: number(overrides.straighten, 0, -45, 45),
+    sharpen: number(overrides.sharpen, 0, 0, 100), blur: number(overrides.blur, 0, 0, 20), vignette: number(overrides.vignette, 0, 0, 100),
+    adjustments,
+    curve: normalizeCurve(overrides.curve),
+    localMasks: normalizeLocalMasks(overrides.localMasks),
+    colorShifts: (Array.isArray(overrides.colorShifts) ? overrides.colorShifts : []).slice(0, 20).map((shift) => ({ ...DEFAULT_COLOR_SHIFT,
+      hex: /^#[0-9a-f]{6}$/i.test(shift?.hex) ? shift.hex : '#ff0000', hue: number(shift?.hue, 0, -180, 180),
+      saturation: number(shift?.saturation, 0, -100, 100), lightness: number(shift?.lightness, 0, -100, 100), range: number(shift?.range, 30, 5, 90) })),
+    resize: { mode: ['none', 'longest', 'width', 'height', 'percent'].includes(overrides.resize?.mode) ? overrides.resize.mode : 'none', value: number(overrides.resize?.value, 100, 1, overrides.resize?.mode === 'percent' ? 400 : 16384) },
+    crop: crop || null,
   }
 }
 
@@ -35,6 +57,9 @@ export function hasEdits(edits) {
     edits.flipV ||
     edits.straighten !== 0 ||
     edits.crop ||
+    curveIsActive(edits.curve) ||
+    edits.localMasks?.length ||
+    edits.colorShifts?.some(isActiveShift) ||
     edits.sharpen !== 0 ||
     edits.blur !== 0 ||
     edits.vignette !== 0 ||
@@ -173,6 +198,11 @@ function applyVignette(canvas, strength) {
  */
 export function processPhoto(source, edits, options = {}) {
   let canvas = source
+  if (edits.localMasks?.some(mask => mask.enabled && mask.exposure !== 0)) {
+    const pixels = canvasToImageData(canvas)
+    applyLocalLight(pixels, edits.localMasks)
+    canvas = imageDataToCanvas(pixels)
+  }
   const quarter = (((edits.rotate / 90) % 4) + 4) % 4
 
   if (quarter || edits.flipH || edits.flipV) {
@@ -215,8 +245,10 @@ export function processPhoto(source, edits, options = {}) {
   }
 
   const needsPixelWork =
+    curveIsActive(edits.curve) ||
     edits.sharpen > 0 ||
     edits.blur > 0 ||
+    edits.colorShifts?.some(isActiveShift) ||
     Object.keys(DEFAULT_ADJUSTMENTS).some(
       (key) => edits.adjustments[key] !== DEFAULT_ADJUSTMENTS[key],
     )
@@ -224,6 +256,9 @@ export function processPhoto(source, edits, options = {}) {
   if (needsPixelWork) {
     const imageData = canvasToImageData(canvas)
     applyAdjustments(imageData, edits.adjustments)
+    applyCurve(imageData, edits.curve)
+    // Nach der globalen Korrektur: die Pipette nimmt die Farben aus der Vorschau.
+    applyColorShifts(imageData, edits.colorShifts)
     if (edits.blur > 0) applyBlur(imageData, edits.blur)
     if (edits.sharpen > 0) applySharpen(imageData, edits.sharpen)
     canvas = imageDataToCanvas(imageData)

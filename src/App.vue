@@ -3,10 +3,12 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useUiStore } from './stores/ui.js'
 import { useEditorStore } from './stores/editor.js'
 import { useLibraryStore } from './stores/library.js'
+import { useDraftStore } from './stores/drafts.js'
 import { useTheme } from './composables/useTheme.js'
 import { ACCEPTED_EXTENSIONS, isSupportedFile } from './lib/imageLoader.js'
 import { adoptFiles, getStartupFiles, isDesktop, onFilesOpened, onMenuAction, pickImages } from './lib/desktop.js'
 import AppHeader from './components/AppHeader.vue'
+import SavedWork from './components/SavedWork.vue'
 import LogoMode from './components/LogoMode.vue'
 import ImageMode from './components/ImageMode.vue'
 import ViewMode from './components/ViewMode.vue'
@@ -15,6 +17,7 @@ import AppIcon from './components/ui/AppIcon.vue'
 const ui = useUiStore()
 const editor = useEditorStore()
 const library = useLibraryStore()
+const drafts = useDraftStore()
 const { toggleTheme } = useTheme()
 
 const fileInput = ref(null)
@@ -142,7 +145,7 @@ async function setMode(next) {
 
 function reportError(error) { ui.setNotice('error', error.message || String(error), 8000) }
 function onBeforeUnload(event) {
-  if (!library.hasPendingWork && !editor.hasPendingWork) return
+  if (!drafts.hasUnsavedWork && !drafts.projectBusy && !drafts.restoring && !library.isImporting && !library.isDecoding && !library.exportBusy && !library.batchProgress && !editor.isLoading && !editor.exportBusy) return
   event.preventDefault()
   event.returnValue = ''
 }
@@ -238,6 +241,7 @@ onBeforeUnmount(() => {
     @drop="onDrop"
   >
     <AppHeader @open-file="openFileDialog" @set-mode="setMode" />
+    <SavedWork />
 
     <main class="app__body">
       <ViewMode v-if="ui.mode === 'view'" :is-dragging="isDragging" @open-files="openFileDialog" />

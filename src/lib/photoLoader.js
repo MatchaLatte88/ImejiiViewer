@@ -1,11 +1,9 @@
 import { decodeViaImageElement, isSupportedFile } from './imageLoader.js'
-import { readExif } from './exif.js'
+import { displayMetadata, readPhotoMetadata } from './photoMetadata.js'
+import { prepareImageFile } from './extendedFormats.js'
 import { createCanvas } from './transform.js'
 import { resolveImageFile } from './desktop.js'
 import { checkImageFile, checkDimensions } from './imageLimits.js'
-
-/** Nur der Dateianfang wird nach EXIF durchsucht - mehr braucht APP1 nie. */
-const EXIF_SCAN_BYTES = 256 * 1024
 
 /** Kantenlaenge der Vorschaubilder in der Bibliotheksleiste. */
 export const THUMBNAIL_SIZE = 240
@@ -13,14 +11,8 @@ export const THUMBNAIL_SIZE = 240
 export { isSupportedFile }
 
 async function readOrientation(file) {
-  if (!/jpe?g/i.test(file.type) && !/\.jpe?g$/i.test(file.name || '')) return { exif: null, orientation: 1 }
-  try {
-    const head = await file.slice(0, EXIF_SCAN_BYTES).arrayBuffer()
-    const exif = readExif(head)
-    return { exif, orientation: exif?.orientation || 1 }
-  } catch {
-    return { exif: null, orientation: 1 }
-  }
+  const metadata = await readPhotoMetadata(file)
+  return { metadata, exif: displayMetadata(metadata), orientation: metadata.Orientation || 1 }
 }
 
 /**
@@ -30,7 +22,7 @@ async function readOrientation(file) {
 function drawOriented(img, width, height) {
   // HTMLImageElement has already applied EXIF orientation, including mirroring.
   const canvas = createCanvas(width, height)
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  const ctx = canvas.getContext('2d', { colorSpace: 'srgb', willReadFrequently: true })
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(img, 0, 0, width, height)
@@ -49,8 +41,9 @@ export async function readPhotoInfo(file) {
 
   file = await resolveImageFile(file)
   await checkImageFile(file)
-  const { exif, orientation } = await readOrientation(file)
-  const url = URL.createObjectURL(file)
+  const { exif, orientation, metadata } = await readOrientation(file)
+  const prepared = await prepareImageFile(file)
+  const url = URL.createObjectURL(prepared.file)
   try {
     const img = await decodeViaImageElement(url)
     const naturalWidth = img.naturalWidth || img.width || 1
@@ -73,6 +66,9 @@ export async function readPhotoInfo(file) {
       height: naturalHeight,
       orientation,
       exif,
+      metadata,
+      warnings: prepared.warnings,
+      colorSpace: 'sRGB · 8-bit working space',
       thumbnail: thumbCanvas.toDataURL('image/png'),
     }
   } finally {
@@ -89,7 +85,8 @@ export async function readPhotoInfo(file) {
 export async function decodePhoto(file, { maxSize = 0 } = {}) {
   file = await resolveImageFile(file)
   await checkImageFile(file)
-  const url = URL.createObjectURL(file)
+  const prepared = await prepareImageFile(file)
+  const url = URL.createObjectURL(prepared.file)
   try {
     const img = await decodeViaImageElement(url)
     let width = img.naturalWidth || img.width || 1

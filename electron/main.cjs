@@ -140,7 +140,7 @@ handle('files:read', async ids => {
 handle('folder:list', id => access.list(id))
 handle('dialog:saveFile', payload => withDialog(async () => {
   const { defaultName, buffer, extension } = payload || {}
-  if (safeParts(defaultName).length !== 1 || !['png', 'jpg', 'jpeg', 'webp', 'ico', 'zip'].includes(extension)) throw new Error('Invalid export filename.')
+  if (safeParts(defaultName).length !== 1 || !['png', 'jpg', 'jpeg', 'webp', 'tif', 'tiff', 'ico', 'zip', 'imejii'].includes(extension)) throw new Error('Invalid export filename.')
   validatedBuffer(buffer)
   const result = await dialog.showSaveDialog(mainWindow, {
     title: 'Save file', defaultPath: defaultName,

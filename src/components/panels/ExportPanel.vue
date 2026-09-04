@@ -3,6 +3,7 @@ import { isDesktop } from '../../lib/desktop.js'
 import { computed, ref } from 'vue'
 import { useEditorStore } from '../../stores/editor.js'
 import { EXPORT_FORMATS, formatBytes } from '../../lib/exportImage.js'
+import MetadataControls from '../ui/MetadataControls.vue'
 import { useEstimatedSize } from '../../composables/useEstimatedSize.js'
 import { DEFAULT_ICO_SIZES } from '../../lib/ico.js'
 import { EXPORT_PRESETS, QUICK_SIZES } from '../../lib/presets.js'
@@ -27,7 +28,7 @@ const formatOptions = Object.entries(EXPORT_FORMATS).map(([value, config]) => ({
   label: config.label,
 }))
 
-const needsQuality = computed(() => format.value !== 'png')
+const needsQuality = computed(() => ['jpeg', 'webp'].includes(format.value))
 const disabled = computed(() => !store.hasImage || store.isLoading || store.exportBusy || busy.value !== '')
 
 /** JPG has no transparency - the background color from the shape section is used instead. */
@@ -118,6 +119,7 @@ const { bytes: estimatedBytes } = useEstimatedSize(
       </div>
     </section>
 
+    <MetadataControls v-model:options="store.metadataOptions" :disabled="!store.hasImage || store.exportBusy" />
     <section class="panel-section">
       <div class="section-title"><span>Sizes</span></div>
       <div class="chips">

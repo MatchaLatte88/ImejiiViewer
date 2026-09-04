@@ -3,7 +3,7 @@ const { constants } = require('node:fs')
 const path = require('node:path')
 const { randomUUID } = require('node:crypto')
 
-const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', avif: 'image/avif', svg: 'image/svg+xml', ico: 'image/x-icon' }
+const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', avif: 'image/avif', svg: 'image/svg+xml', ico: 'image/x-icon', heic: 'image/heic', heif: 'image/heif', tif: 'image/tiff', tiff: 'image/tiff' }
 const IMAGE_EXTENSIONS = Object.keys(MIME)
 const MAX_FILE_BYTES = 128 * 1024 * 1024
 const MAX_EXPORT_BYTES = 512 * 1024 * 1024

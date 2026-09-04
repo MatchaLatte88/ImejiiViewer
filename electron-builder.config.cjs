@@ -31,7 +31,7 @@ module.exports = {
     deleteAppDataOnUninstall: false,
   },
   fileAssociations: [{
-    ext: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'svg', 'ico'],
+    ext: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'svg', 'ico', 'heic', 'heif', 'tif', 'tiff'],
     name: 'Imejii.Image',
     description: 'View or edit with Imejii',
     role: 'Viewer',

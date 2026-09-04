@@ -105,6 +105,10 @@ keine Veröffentlichung, keine Installation und keine systemweiten Dateizuordnun
 wurden vorgenommen. Der lokale App-Ordner ist unsigned; ein signierter Installer wurde
 nicht erzeugt oder abgenommen. Der Builder weist entsprechend auf fehlende Autor-Metadaten hin.
 
+Nachtrag: Der Herausgeber wurde anschließend als **Frederik Morbe** festgelegt und in
+`package.json` hinterlegt. Der obige Pakettest dokumentiert weiterhin den vorherigen Build;
+mit diesem Nachtrag wurde kein neues oder signiertes Paket erstellt.
+
 Vor Launch bleiben die reale Installer-/Update-/Deinstallationsabnahme auf sauberem Windows,
 SmartScreen/Signatur, Hardware-/DPI-/Datenträgerfehler-Matrix sowie ggf. andere Plattformen.
 Kein Autosave-Projektformat oder Crash-Recovery: diese verbleibende Produktgrenze ist dokumentiert.

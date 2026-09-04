@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useEditorStore } from '../stores/editor.js'
+import { useUiStore } from '../stores/ui.js'
 import { isDesktop } from '../lib/desktop.js'
 import CanvasStage from './CanvasStage.vue'
 import DropZone from './DropZone.vue'
@@ -18,6 +19,7 @@ const props = defineProps({
 const emit = defineEmits(['open-file'])
 
 const store = useEditorStore()
+const ui = useUiStore()
 
 const TOOLS = [
   { id: 'background', label: 'Background', icon: 'eyedropper', component: BackgroundPanel },
@@ -29,6 +31,15 @@ const TOOLS = [
 const activePanel = computed(
   () => TOOLS.find((tool) => tool.id === store.activeTool)?.component ?? BackgroundPanel,
 )
+
+/** Ein erneuter Klick auf das aktive Werkzeug klappt sein Panel weg. */
+function selectTool(id) {
+  if (store.activeTool === id) ui.togglePanel('tools')
+  else {
+    store.activeTool = id
+    ui.panels.tools = true
+  }
+}
 
 function isTypingTarget(target) {
   return target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
@@ -89,16 +100,28 @@ onBeforeUnmount(() => {
         :key="tool.id"
         type="button"
         class="toolbar__item"
-        :class="{ 'is-active': store.activeTool === tool.id }"
+        :class="{ 'is-active': ui.panels.tools && store.activeTool === tool.id }"
         :title="tool.label"
-        @click="store.activeTool = tool.id"
+        @click="selectTool(tool.id)"
       >
         <AppIcon :name="tool.icon" :size="18" />
         <span>{{ tool.label }}</span>
       </button>
+
+      <button
+        type="button"
+        class="toolbar__item toolbar__collapse"
+        :class="{ 'is-open': ui.panels.tools }"
+        :title="ui.panels.tools ? 'Hide the tool panel' : 'Show the tool panel'"
+        :aria-expanded="ui.panels.tools"
+        @click="ui.togglePanel('tools')"
+      >
+        <AppIcon name="chevron" :size="18" />
+        <span>{{ ui.panels.tools ? 'Hide' : 'Show' }}</span>
+      </button>
     </nav>
 
-    <section v-if="store.hasImage" class="sidebar" :inert="store.isLoading">
+    <section v-if="store.hasImage" v-show="ui.panels.tools" class="sidebar" :inert="store.isLoading">
       <component :is="activePanel" />
     </section>
 
@@ -110,7 +133,19 @@ onBeforeUnmount(() => {
       @open-file="emit('open-file')"
     />
 
-    <ExportPanel v-if="store.hasImage" />
+    <button
+      v-if="store.hasImage"
+      type="button"
+      class="panel-toggle"
+      :class="{ 'is-open': ui.panels.export }"
+      :title="ui.panels.export ? 'Hide the export panel' : 'Show the export panel'"
+      :aria-expanded="ui.panels.export"
+      @click="ui.togglePanel('export')"
+    >
+      <AppIcon name="chevron" :size="14" />
+    </button>
+
+    <ExportPanel v-if="store.hasImage" v-show="ui.panels.export" />
   </div>
 </template>
 
@@ -154,6 +189,36 @@ onBeforeUnmount(() => {
 .toolbar__item.is-active {
   background: var(--accent-soft);
   color: var(--accent-text);
+}
+
+/* Ein- und Ausklappen: der Pfeil zeigt, wohin das Panel verschwindet. */
+.toolbar__collapse {
+  margin-top: auto;
+}
+
+.toolbar__collapse.is-open svg {
+  transform: rotate(180deg);
+}
+
+.panel-toggle {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  flex: none;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-subtle);
+  transition: background var(--transition), color var(--transition);
+}
+
+.panel-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.panel-toggle:not(.is-open) svg {
+  transform: rotate(180deg);
 }
 
 .sidebar {

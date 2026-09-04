@@ -11,6 +11,7 @@ import SliderControl from '../ui/SliderControl.vue'
 import SegmentedControl from '../ui/SegmentedControl.vue'
 import ToggleSwitch from '../ui/ToggleSwitch.vue'
 import AppButton from '../ui/AppButton.vue'
+import MetadataControls from '../ui/MetadataControls.vue'
 
 const store = useLibraryStore()
 const ui = useUiStore()
@@ -118,7 +119,7 @@ function setBatchMode(mode) {
       <div class="stack">
         <SegmentedControl v-model="singleFormat" :options="formatOptions" />
         <SliderControl
-          v-if="singleFormat !== 'png'"
+          v-if="['jpeg', 'webp'].includes(singleFormat)"
           v-model="singleQuality"
           label="Quality"
           unit="%"
@@ -149,6 +150,8 @@ function setBatchMode(mode) {
         </AppButton>
       </div>
     </section>
+
+    <MetadataControls v-model:options="store.metadataOptions" :disabled="disabled" />
 
     <section class="panel-section">
       <div class="section-title"><span>Watermark</span></div>
@@ -206,7 +209,7 @@ function setBatchMode(mode) {
           @update:model-value="store.batch.format = $event"
         />
         <SliderControl
-          v-if="store.batch.format !== 'png'"
+          v-if="['jpeg', 'webp'].includes(store.batch.format)"
           v-model="store.batch.quality"
           label="Quality"
           unit="%"

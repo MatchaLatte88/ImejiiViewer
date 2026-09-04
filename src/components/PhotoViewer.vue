@@ -43,8 +43,11 @@ const showSlider = computed(
   () => sliderCompare.value && canCompareSlider.value && !store.cropMode,
 )
 
+// Beim Aufnehmen einer Farbe zaehlt, was auf dem Schirm steht - also das Ergebnis.
 const displayCanvas = computed(() =>
-  store.showOriginal && !sliderCompare.value ? store.sourceCanvas : store.previewCanvas,
+  store.showOriginal && !sliderCompare.value && !store.eyedropperMode
+    ? store.sourceCanvas
+    : store.previewCanvas,
 )
 
 const displaySize = computed(() => {
@@ -84,10 +87,19 @@ function draw() {
   const ctx = canvas.getContext('2d')
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.drawImage(source, 0, 0)
+  if (props.editing && store.clippingWarning && !store.showOriginal && !store.eyedropperMode) {
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height), data = pixels.data
+    for (let i = 0; i < data.length; i += 4) {
+      if (!data[i + 3]) continue
+      if (Math.max(data[i], data[i + 1], data[i + 2]) >= 254) { data[i] = 255; data[i + 1] = 32; data[i + 2] = 48 }
+      else if (Math.max(data[i], data[i + 1], data[i + 2]) <= 1) { data[i] = 40; data[i + 1] = 100; data[i + 2] = 255 }
+    }
+    ctx.putImageData(pixels, 0, 0)
+  }
 }
 
 watch(
-  [() => store.renderVersion, displayCanvas],
+  [() => store.renderVersion, displayCanvas, () => store.clippingWarning, () => store.eyedropperMode],
   () => {
     // Noch vor dem DOM-Patch zeichnen: sonst wird das alte Bild fuer einen
     // Frame auf die neue Rahmengroesse gestreckt - das Zucken beim Wechsel.
@@ -172,6 +184,7 @@ function onWheel(event) {
 }
 
 function onPointerDown(event) {
+  if (store.eyedropperMode && event.button === 0) return
   if (store.cropMode || event.button > 1) return
   isPanning.value = true
   panStart = { x: event.clientX - offset.value.x, y: event.clientY - offset.value.y }
@@ -445,6 +458,44 @@ function endSliderDrag() {
   window.removeEventListener('pointerup', endSliderDrag)
 }
 
+// --- Pipette ------------------------------------------------------------
+const hoverColor = ref(null)
+
+watch(
+  () => store.eyedropperMode,
+  () => {
+    hoverColor.value = null
+  },
+)
+
+function toImageCoords(event) {
+  const canvas = canvasEl.value
+  if (!canvas) return null
+  const rect = canvas.getBoundingClientRect()
+  const x = ((event.clientX - rect.left) / rect.width) * canvas.width
+  const y = ((event.clientY - rect.top) / rect.height) * canvas.height
+  if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return null
+  return { x, y }
+}
+
+function onPickMove(event) {
+  if (!store.eyedropperMode) {
+    hoverColor.value = null
+    return
+  }
+  const point = toImageCoords(event)
+  hoverColor.value = point ? store.samplePreviewColor(point.x, point.y) : null
+}
+
+function onPickClick(event) {
+  if (!store.eyedropperMode) return
+  const point = toImageCoords(event)
+  if (!point) return
+  store.pickColorShift(point.x, point.y)
+  // Mit gedrueckter Umschalttaste bleibt die Pipette fuer weitere Farben aktiv.
+  if (!event.shiftKey) store.eyedropperMode = false
+}
+
 defineExpose({ resetView, zoomBy, setZoom, toggleFullscreen, toggleSlideshow })
 </script>
 
@@ -461,7 +512,11 @@ defineExpose({ resetView, zoomBy, setZoom, toggleFullscreen, toggleSlideshow })
     <div
       ref="stageEl"
       class="stage"
-      :class="{ 'is-panning': isPanning, 'is-cropping': store.cropMode }"
+      :class="{
+        'is-panning': isPanning,
+        'is-cropping': store.cropMode,
+        'is-picking': store.eyedropperMode,
+      }"
       @wheel="onWheel"
       @dblclick="onStageDoubleClick"
       @pointerdown="onPointerDown"
@@ -470,7 +525,13 @@ defineExpose({ resetView, zoomBy, setZoom, toggleFullscreen, toggleSlideshow })
       @pointercancel="onPointerUp"
     >
       <div v-if="store.activeItem" class="frame checkerboard" :style="frameStyle">
-        <canvas ref="canvasEl" class="frame__canvas" />
+        <canvas
+          ref="canvasEl"
+          class="frame__canvas"
+          @mousemove="onPickMove"
+          @mouseleave="hoverColor = null"
+          @click="onPickClick"
+        />
 
         <div v-if="showSlider" class="compare" @pointerdown="beginSliderDrag">
           <div class="compare__reveal" :style="{ width: sliderPos + '%' }">
@@ -530,8 +591,20 @@ defineExpose({ resetView, zoomBy, setZoom, toggleFullscreen, toggleSlideshow })
         </div>
       </div>
 
+      <div v-if="store.eyedropperMode" class="picker-hint">
+        <AppIcon name="eyedropper" :size="14" />
+        <span>
+          Click the color you want to change.
+          Hold <b>Shift</b> for several colors, <b>Esc</b> to exit.
+        </span>
+        <span v-if="hoverColor" class="picker-hint__swatch">
+          <i :style="{ background: hoverColor.hex }" />
+          <span class="mono">{{ hoverColor.hex }}</span>
+        </span>
+      </div>
+
       <div v-if="store.isDecoding" class="viewer__busy">Loading image ...</div>
-      <div v-if="store.showOriginal" class="viewer__badge">Original</div>
+      <div v-if="store.showOriginal && !store.eyedropperMode" class="viewer__badge">Original</div>
 
       <div v-if="store.canStep" class="viewer__nav">
         <button type="button" class="viewer__arrow" title="Previous image" @click="store.step(-1)">
@@ -670,8 +743,48 @@ defineExpose({ resetView, zoomBy, setZoom, toggleFullscreen, toggleSlideshow })
   cursor: grabbing;
 }
 
-.stage.is-cropping {
+.stage.is-cropping,
+.stage.is-picking {
   cursor: crosshair;
+}
+
+/* --- Pipette --- */
+.picker-hint {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: min(560px, calc(100% - 32px));
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.picker-hint b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.picker-hint__swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.picker-hint__swatch i {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
 }
 
 .frame {

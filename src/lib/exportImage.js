@@ -1,14 +1,20 @@
 import { createCanvas, resizeCanvas } from './transform.js'
+import { decoratePhotoBlob, encodePhotoTiff } from './photoMetadata.js'
 
 export const EXPORT_FORMATS = {
   png: { mime: 'image/png', extension: 'png', label: 'PNG', supportsAlpha: true },
   webp: { mime: 'image/webp', extension: 'webp', label: 'WebP', supportsAlpha: true },
   jpeg: { mime: 'image/jpeg', extension: 'jpg', label: 'JPG', supportsAlpha: false },
+  tiff: { mime: 'image/tiff', extension: 'tif', label: 'TIFF · 8-bit', supportsAlpha: true },
 }
 
 /** Canvas -> Blob. Wirft, wenn der Browser das Format nicht kodieren kann. */
-export function canvasToBlob(canvas, format = 'png', quality = 0.92) {
+export async function canvasToBlob(canvas, format = 'png', quality = 0.92, metadata = {}, metadataOptions = {}) {
   const config = EXPORT_FORMATS[format] || EXPORT_FORMATS.png
+  if (format === 'tiff') {
+    const pixels = canvas.getContext('2d', { colorSpace: 'srgb' }).getImageData(0, 0, canvas.width, canvas.height)
+    return new Blob([encodePhotoTiff(metadata, metadataOptions, canvas.width, canvas.height, pixels.data)], { type: config.mime })
+  }
   if (!config.supportsAlpha) {
     const opaque = createCanvas(canvas.width, canvas.height)
     const ctx = opaque.getContext('2d')
@@ -17,7 +23,7 @@ export function canvasToBlob(canvas, format = 'png', quality = 0.92) {
     ctx.drawImage(canvas, 0, 0)
     canvas = opaque
   }
-  return new Promise((resolve, reject) => {
+  const blob = await new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
         if (!blob || blob.type !== config.mime) {
@@ -30,6 +36,7 @@ export function canvasToBlob(canvas, format = 'png', quality = 0.92) {
       quality,
     )
   })
+  return decoratePhotoBlob(blob, canvas.width, canvas.height, metadata, metadataOptions)
 }
 
 /**
@@ -90,7 +97,7 @@ export async function renderSizeSet(source, sizes, options = {}) {
     const height = typeof size === 'number' ? size : size.height
     const label = typeof size === 'number' ? null : size.name
     const canvas = renderToSize(source, width, height, { fit: options.fit, background })
-    const blob = await canvasToBlob(canvas, format, quality)
+    const blob = await canvasToBlob(canvas, format, quality, options.metadata, options.metadataOptions)
     results.push({
       name: label || baseName + '-' + width + 'x' + height + '.' + config.extension,
       size: width,

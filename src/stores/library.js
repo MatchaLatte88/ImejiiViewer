@@ -9,13 +9,19 @@ import {
   flipCropRect,
   hasEdits,
   previewGeometry,
+  processPhoto,
   resolveTargetSize,
   rotateCropRect,
 } from '../lib/photoPipeline.js'
 import { DEFAULT_ADJUSTMENTS } from '../lib/adjustments.js'
+import { whiteBalanceFromSample } from '../lib/photoCurves.js'
+import { createColorShift } from '../lib/colorShifts.js'
+import { hexToRgb, rgbToHex } from '../lib/color.js'
+import { sampleColorAt } from '../lib/imageLoader.js'
 import { canvasToImageData } from '../lib/transform.js'
 import { EXPORT_FORMATS, canvasToBlob, slugify } from '../lib/exportImage.js'
 import { applyWatermark } from '../lib/watermark.js'
+import { DEFAULT_METADATA } from '../lib/photoMetadata.js'
 import { isDesktop, listFolderImages, readImagesById, saveBlob, beginFileSet, confirmDiscard } from '../lib/desktop.js'
 import { processPhotoAsync } from '../lib/photoProcessing.js'
 import { exportName, uniqueExportName } from '../lib/exportNames.js'
@@ -55,6 +61,12 @@ export const useLibraryStore = defineStore('library', () => {
   const cropAspect = ref(null) // null = frei, sonst Breite/Hoehe
   const cropDraft = ref(null) // { x, y, width, height } relativ 0..1
 
+  // --- Pipette -----------------------------------------------------------
+  const eyedropperMode = ref(false)
+  const clippingWarning = ref(false)
+  /** Hoechstzahl gezielter Farbaenderungen je Bild. */
+  const COLOR_SHIFT_LIMIT = 6
+
   // --- Stapelverarbeitung ------------------------------------------------
   const batch = ref({
     format: 'jpeg',
@@ -67,6 +79,7 @@ export const useLibraryStore = defineStore('library', () => {
   // --- Wasserzeichen -------------------------------------------------------
   // Wird beim Export angewendet (Einzelbild, Zwischenablage und Stapel) - nicht
   // in der Bearbeitungsvorschau, damit es die eigentliche Bildbearbeitung nicht beeinflusst.
+  const metadataOptions = ref({ ...DEFAULT_METADATA })
   const watermark = ref({
     enabled: false,
     text: '',
@@ -139,6 +152,7 @@ export const useLibraryStore = defineStore('library', () => {
     isImporting.value = true
     const addedIds = []
     const failed = []
+    const formatWarnings = []
 
     for (const file of files) {
       if (importCanceled) break
@@ -146,9 +160,11 @@ export const useLibraryStore = defineStore('library', () => {
       try {
         const info = await readPhotoInfo(file)
         if (importCanceled) break
+        if (info.warnings?.length) formatWarnings.push(file.name + ': ' + info.warnings.join(' '))
         const id = nextId++
         items.value.push({
           id,
+          draftId: 'photo:' + crypto.randomUUID(),
           file: markRaw(file),
           desktopId: file.desktopId || null,
           ...info,
@@ -168,6 +184,8 @@ export const useLibraryStore = defineStore('library', () => {
     }
     if (failed.length) {
       ui.setNotice('error', 'Could not read: ' + failed.join(', '), 8000)
+    } else if (formatWarnings.length) {
+      ui.setNotice('info', formatWarnings.slice(0, 3).join(' · '), 10000)
     } else if (addedIds.length) {
       ui.setNotice('success', addedIds.length + ' image(s) added.')
     }
@@ -196,6 +214,7 @@ export const useLibraryStore = defineStore('library', () => {
     entryFor(id)
     cropMode.value = false
     cropDraft.value = null
+    eyedropperMode.value = false
     fitToView.value = true
     zoom.value = 1
     isDecoding.value = true
@@ -314,7 +333,7 @@ export const useLibraryStore = defineStore('library', () => {
         if (activeId.value !== item.id || ui.mode !== 'view') return false
         if (items.value.length >= 1000) throw new Error('Collection limit reached. Remove some images first.')
         const descriptor = { desktopId: next.id, name: info.name, type: info.type, size: info.size, lastModified: info.lastModified }
-        fresh = { id: nextId++, file: markRaw(descriptor), desktopId: next.id, ...info, edits: createEdits(), ephemeral: true }
+        fresh = { id: nextId++, draftId: 'photo:' + crypto.randomUUID(), file: markRaw(descriptor), desktopId: next.id, ...info, edits: createEdits(), ephemeral: true }
         items.value.push(fresh)
         entryFor(fresh.id)
       }
@@ -515,6 +534,9 @@ export const useLibraryStore = defineStore('library', () => {
     // Der Zuschnitt bleibt bewusst aussen vor: er passt selten auf andere Motive.
     const shared = {
       adjustments: { ...item.edits.adjustments },
+      curve: [...item.edits.curve],
+      localMasks: item.edits.localMasks.map(mask => ({ ...mask })),
+      colorShifts: item.edits.colorShifts.map((shift) => ({ ...shift })),
       sharpen: item.edits.sharpen,
       blur: item.edits.blur,
       vignette: item.edits.vignette,
@@ -525,6 +547,9 @@ export const useLibraryStore = defineStore('library', () => {
       commitHistory(entry)
       Object.assign(entry.edits, {
         adjustments: { ...shared.adjustments },
+        curve: [...shared.curve],
+        localMasks: shared.localMasks.map(mask => ({ ...mask })),
+        colorShifts: shared.colorShifts.map((shift) => ({ ...shift })),
         sharpen: shared.sharpen,
         blur: shared.blur,
         vignette: shared.vignette,
@@ -533,6 +558,76 @@ export const useLibraryStore = defineStore('library', () => {
       commitHistory(entry)
     }
     ui.setNotice('success', 'Applied to ' + (items.value.length - 1) + ' other image(s).')
+  }
+
+  // --- Gezielte Farbaenderung --------------------------------------------
+  // Die Pipette liest aus der fertigen Vorschau: was auf dem Schirm steht, ist
+  // genau das, was der neue Eintrag spaeter trifft.
+  let pickerSample = null
+
+  watch([eyedropperMode, renderVersion], () => {
+    // Einmal auslesen statt bei jeder Mausbewegung - getImageData ist teuer.
+    if (eyedropperMode.value === 'white-balance' && sourceCanvas.value && activeItem.value) {
+      const { rotate, flipH, flipV, straighten, crop } = activeItem.value.edits
+      const originalGeometry = processPhoto(sourceCanvas.value, createEdits({ rotate, flipH, flipV, straighten, crop }), { skipResize: true })
+      pickerSample = canvasToImageData(originalGeometry)
+      originalGeometry.width = originalGeometry.height = 1
+    } else pickerSample = eyedropperMode.value && previewCanvas.value ? canvasToImageData(previewCanvas.value) : null
+  })
+
+  // Zuschneiden und Pipette greifen beide auf die Buehne zu - nur eins davon.
+  watch(eyedropperMode, (active) => {
+    if (active) cropMode.value = false
+  })
+  watch(cropMode, (active) => {
+    if (active) eyedropperMode.value = false
+  })
+
+  /** Farbe an einer Vorschaukoordinate lesen - fuer die Anzeige unter dem Zeiger. */
+  function samplePreviewColor(x, y) {
+    return pickerSample ? sampleColorAt(pickerSample, x, y, 1) : null
+  }
+
+  function addColorShift(hex) {
+    const item = activeItem.value
+    if (!item) return
+    const rgb = hexToRgb(hex)
+    if (!rgb) return
+    if (item.edits.colorShifts.length >= COLOR_SHIFT_LIMIT) {
+      ui.setNotice('info', 'At most ' + COLOR_SHIFT_LIMIT + ' selective colors per image.')
+      return
+    }
+    item.edits.colorShifts.push(createColorShift(rgbToHex(rgb.r, rgb.g, rgb.b)))
+  }
+
+  /** Farbe aufnehmen und als neuen Eintrag anlegen. */
+  function pickColorShift(x, y) {
+    const sample = samplePreviewColor(x, y)
+    if (!sample) {
+      ui.setNotice('error', 'This spot is fully transparent - there is no color to pick.')
+      return null
+    }
+    if (eyedropperMode.value === 'white-balance') {
+      try {
+        const correction = whiteBalanceFromSample(sample)
+        const adjustments = activeItem.value.edits.adjustments
+        for (const channel of ['R', 'G', 'B']) correction['whiteBalance' + channel] = Math.max(0.25, Math.min(4, correction['whiteBalance' + channel]))
+        Object.assign(adjustments, correction)
+        eyedropperMode.value = false
+        ui.setNotice('success', 'White balance sampled. Tone and other color edits remain applied.')
+      } catch (error) { ui.setNotice('error', error.message) }
+    } else addColorShift(sample.hex)
+    return sample
+  }
+
+  function removeColorShift(index) {
+    const item = activeItem.value
+    if (item) item.edits.colorShifts.splice(index, 1)
+  }
+
+  function clearColorShifts() {
+    const item = activeItem.value
+    if (item) item.edits.colorShifts = []
   }
 
   // --- History -----------------------------------------------------------
@@ -587,6 +682,38 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   // --- Export ------------------------------------------------------------
+  function hasSavedEdits(item) {
+    const entry = history.get(item.id)
+    return hasEdits(item.edits) || Boolean(entry?.undo.length || entry?.redo.length)
+  }
+  function draftState(id) {
+    const item = items.value.find(entry => entry.id === id)
+    if (!item) return null
+    const entry = history.get(id)
+    return { edits: JSON.parse(JSON.stringify(item.edits)), history: entry ? { undo: [...entry.undo], redo: [...entry.redo], committed: entry.committed } : null }
+  }
+  async function restoreDraft(draft) {
+    if (!draft.state?.edits || typeof draft.state.edits !== 'object') throw new Error('Project has no valid photo settings.')
+    const restoredEdits = createEdits(draft.state.edits)
+    const prior = draft.state.history
+    const sanitize = values => (Array.isArray(values) ? values : []).slice(-HISTORY_LIMIT).map(value => JSON.stringify(createEdits(JSON.parse(value))))
+    const restoredHistory = { undo: sanitize(prior?.undo), redo: sanitize(prior?.redo), committed: JSON.stringify(restoredEdits) }
+    if (prior?.committed && JSON.stringify(createEdits(JSON.parse(prior.committed))) !== restoredHistory.committed) restoredHistory.undo.push(JSON.stringify(createEdits(JSON.parse(prior.committed))))
+    let item = items.value.find(entry => entry.draftId === draft.id)
+    if (item && hasEdits(item.edits) && !await confirmDiscard('Replace the open edits with this saved copy?')) return false
+    if (!item) {
+      const ids = await addFiles([draft.file])
+      item = items.value.find(entry => entry.id === ids[0])
+      if (!item) throw new Error('Unable to restore the saved original.')
+    }
+    clearTimeout(historyTimers.get(item.id))
+    item.draftId = draft.id
+    item.edits = restoredEdits
+    history.set(item.id, restoredHistory)
+    await select(item.id)
+    scheduleRender()
+    return true
+  }
   /**
    * Rendert ein Bild in Originalaufloesung. Pixelbasierte Effekte werden dabei
    * hochgerechnet, damit das Ergebnis der Vorschau entspricht.
@@ -614,8 +741,9 @@ export const useLibraryStore = defineStore('library', () => {
     const item = activeItem.value
     if (!item) return
     const config = EXPORT_FORMATS[format] || EXPORT_FORMATS.png
+    const metadata = { ...metadataOptions.value }
     const canvas = await renderItemFullSize(item, {}, watermark.value, exportController?.signal)
-    const blob = await canvasToBlob(canvas, format, quality / 100)
+    const blob = await canvasToBlob(canvas, format, quality / 100, item.metadata, metadata)
     const fileName = slugify(item.name) + '.' + config.extension
     const result = await saveBlob(blob, fileName, { signal: exportController?.signal })
     if (result.saved) ui.setNotice('success', 'Saved: ' + (result.path || fileName))
@@ -628,8 +756,9 @@ export const useLibraryStore = defineStore('library', () => {
       ui.setNotice('error', 'This browser does not support the clipboard.')
       return
     }
+    const metadata = { ...metadataOptions.value }
     const canvas = await renderItemFullSize(item, {}, watermark.value, exportController?.signal)
-    const blob = await canvasToBlob(canvas, 'png')
+    const blob = await canvasToBlob(canvas, 'png', 0.92, item.metadata, metadata)
     exportController?.signal.throwIfAborted()
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
     ui.setNotice('success', 'PNG copied to the clipboard.')
@@ -658,6 +787,7 @@ export const useLibraryStore = defineStore('library', () => {
     if (!items.value.length || batchProgress.value || exportBusy.value) return
     const settings = JSON.parse(JSON.stringify(batch.value))
     const mark = JSON.parse(JSON.stringify(watermark.value))
+    const metadata = { ...metadataOptions.value }
     const snapshot = items.value.map(item => ({ ...item, edits: JSON.parse(JSON.stringify(item.edits)) }))
     const config = EXPORT_FORMATS[settings.format] || EXPORT_FORMATS.png
     const used = new Set()
@@ -674,7 +804,7 @@ export const useLibraryStore = defineStore('library', () => {
         batchProgress.value = { done: index, total: snapshot.length, label: item.name }
         const edits = settings.applyEdits ? item.edits : createEdits()
         const canvas = await renderItemFullSize(item, { ...edits, resize: settings.resize }, mark, controller.signal)
-        const blob = await canvasToBlob(canvas, settings.format, settings.quality / 100)
+        const blob = await canvasToBlob(canvas, settings.format, settings.quality / 100, item.metadata, metadata)
         if (controller.signal.aborted) throw new DOMException('Export canceled.', 'AbortError')
         const name = uniqueExportName(exportName(settings.pattern, item, index, canvas, config.extension), used)
         await session.write({ name, blob })
@@ -706,6 +836,7 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   return {
+    draftState, restoreDraft, hasSavedEdits, clippingWarning,
     // State
     exportBusy,
     sourceLimit,
@@ -733,8 +864,10 @@ export const useLibraryStore = defineStore('library', () => {
     cropMode,
     cropAspect,
     cropDraft,
+    eyedropperMode,
     batch,
     watermark,
+    metadataOptions,
     histogram,
     // Getter
     activeItem,
@@ -764,6 +897,11 @@ export const useLibraryStore = defineStore('library', () => {
     cancelCrop,
     clearCrop,
     autoEnhance,
+    samplePreviewColor,
+    addColorShift,
+    pickColorShift,
+    removeColorShift,
+    clearColorShifts,
     resetEdits,
     applyEditsToAll,
     undo,

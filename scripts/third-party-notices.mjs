@@ -33,7 +33,9 @@ async function visit(name, from) {
   for (const dependency of Object.keys(metadata.dependencies || {})) await visit(dependency, dir)
 }
 for (const dependency of Object.keys(pkg.dependencies)) await visit(dependency, root)
+notices.push('Compact ICC Profiles — CC0-1.0\nhttps://github.com/saucecontrol/Compact-ICC-Profiles\nsRGB-v4.icc and DisplayP3-v4.icc; derived BT.709 profile in Imejii.\nhttps://creativecommons.org/publicdomain/zero/1.0/legalcode')
+notices.push('HEIC codec notice\nheic-to 1.5.2 includes libheif 1.22.2 and libde265 (build instructions specify 1.0.16).\nhttps://github.com/hoppergee/heic-to\nhttps://github.com/strukturag/libheif\nhttps://github.com/strukturag/libde265\nSee docs/PHOTO-FEATURES.md for the required pre-distribution source/license/recombination review. This generated notice is not that review.')
 await fs.mkdir(path.join(root, 'build'), { recursive: true })
 await fs.writeFile(path.join(root, 'build/THIRD_PARTY_NOTICES.txt'),
   'Imejii third-party notices\nGenerated from the installed, lockfile-pinned production dependencies.\nElectron and Chromium licenses are included separately with the runtime.\n\n' + notices.sort().join('\n\n' + '='.repeat(72) + '\n\n'))
-console.log('Collected licenses for ' + notices.length + ' production packages.')
+console.log('Collected licenses for ' + seen.size + ' production packages and ' + (notices.length - seen.size) + ' additional notices.')

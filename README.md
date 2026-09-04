@@ -81,7 +81,7 @@ Der Startbildschirm ist ein reiner Betrachter – ein Bild, sonst nichts.
 - EXIF-Ausrichtung wird beim Laden automatisch angewendet
 
 **Konvertieren**
-- Einzelbild als PNG, WebP oder JPG speichern oder in die Zwischenablage kopieren
+- Einzelbild als PNG, WebP, JPG oder 8-Bit-TIFF speichern oder in die Zwischenablage kopieren
 - Stapelverarbeitung: gemeinsames Zielformat, Qualität und Größe für alle Bilder,
   wahlweise mit oder ohne Einzelbearbeitungen. Desktop: neuer Unterordner, Browser: ZIP.
   Einstellungen, Bildliste und Wasserzeichen werden beim Start festgehalten. Abbruch ist möglich;
@@ -90,7 +90,17 @@ Der Startbildschirm ist ein reiner Betrachter – ein Bild, sonst nichts.
 
 ### Unterstützte Eingabeformate
 
-`.png` `.jpg` `.jpeg` `.webp` `.gif` `.bmp` `.avif` `.svg` `.ico`
+`.png` `.jpg` `.jpeg` `.webp` `.gif` `.bmp` `.avif` `.svg` `.ico` `.heic` `.heif` `.tif` `.tiff`
+
+### Dauerhafte Foto-Bearbeitung
+
+Automatische lokale Sicherungen enthalten Original, Einstellungen und Undo/Redo. Über „Saved work“
+wieder öffnen; „Save project…“ / „Open project“ sichern und öffnen portable `.imejii`-Dateien.
+Neu: Lichter/Tiefen, Weiß-/Schwarzpunkt, Tint, Weißabgleichspipette, Tonkurve, Clipping-Anzeige
+und lokale Radial-/Verlaufsmasken. Alles bleibt nicht-destruktiv und ohne KI.
+
+Rasterexporte verwenden sRGB mit eingebettetem ICC-Profil und wählbarer EXIF-Übernahme; GPS ist
+standardmäßig aus. [Funktionsumfang, Bedienung, Grenzen und Decoder-Lizenzen](docs/PHOTO-FEATURES.md).
 
 Grenzen und Exportverhalten:
 
@@ -99,7 +109,9 @@ Grenzen und Exportverhalten:
 - Logos: Arbeitsauflösung maximal 4096 px; größere Quellen werden verkleinert und die App zeigt einen Hinweis.
 - Browser: maximal 512 MiB Quelldateien in der Sammlung und 256 MiB unkomprimierte ZIP-Einträge.
 - Desktop: Originale werden über autorisierte Handles bei Bedarf gelesen. Ein Exportset ist auf 1.000 Dateien / 4 GiB begrenzt.
-- Animationen, mehrseitige Bilder, EXIF-/GPS-Metadaten und Farbprofile werden beim Canvas-Export nicht originalgetreu erhalten. Es wird ein statisches Rasterbild exportiert; SVG wird gerastert.
+- Statisches Rasterbild, SVG wird gerastert. HEIF/TIFF: erstes Bild, nicht alle Codec-/Seitenvarianten. 16-Bit-TIFF wird auf 8 Bit reduziert; kein RAW-/HDR-Workflow.
+- Arbeitsfarbraum sRGB/8 Bit; profilspezifische Eingabefarben werden konvertiert, größere Farbräume können clippen. EXIF-Allowlist statt vollständiger XMP/IPTC/MakerNote-Übernahme.
+- Automatische Sicherungen: maximal 100 / 2 GiB Originale, abhängig von Speicherquote. App-/Browserdaten löschen entfernt sie. Portable Projekte separat sichern; sie enthalten auch private Originalmetadaten.
 - JPEG ist verlustbehaftet und unterstützt kein Alpha: transparente Bereiche werden weiß. PNG/WebP unterstützen Transparenz; WebP-Export kann verlustbehaftet sein.
 - Feste Icon-Pakete verwenden PNG/ICO unabhängig vom ausgewählten Einzelbildformat. Ein macOS-Paket ist ein PNG-Iconset, noch keine fertige ICNS-Datei.
 
@@ -194,7 +206,9 @@ nicht Quellcode, Tests, Auditdateien oder node_modules. Icons werden aus der vor
 Imejii-Marke erzeugt; Lizenztexte der Produktionsabhängigkeiten werden mitgeliefert.
 ASAR-Integritätsprüfung und restriktive Electron-Fuses werden beim Packen aktiviert.
 
-**Ein lokales Paket ist noch keine Launch-Freigabe.** Publisher, Signierungszertifikat,
+Herausgeber ist Frederik Morbe (Paket-Metadaten, noch keine digitale Signierung).
+
+**Ein lokales Paket ist noch keine Launch-Freigabe.** Signierungszertifikat,
 Downloadkanal und Abnahme des installierten Programms stehen separat an.
 Details: [Release-Checkliste](docs/RELEASE.md), [Fix-Status](audit/2026-09-04/FIXES.md).
 

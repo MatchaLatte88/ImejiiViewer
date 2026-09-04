@@ -11,6 +11,7 @@ import { canvasToBlob } from '../src/lib/exportImage.js'
 import { createEdits, processPhoto, previewGeometry } from '../src/lib/photoPipeline.js'
 import { createIcoBlob } from '../src/lib/ico.js'
 import { cloneSettings, DEFAULT_SETTINGS, processImage } from '../src/lib/pipeline.js'
+import { photoUpgradeChecks } from './photo-upgrade-checks.js'
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 const assert = (condition, detail) => { if (!condition) throw new Error(detail) }
@@ -106,6 +107,15 @@ globalThis.runImejiiAudit = async () => {
     const expected = processPhoto(rotated, createEdits({ flipH: true }))
     const actual = processPhoto(original, createEdits({ rotate: 90, flipH: true }))
     assert(equalPixels(expected, actual), 'horizontal flip after rotation flips along the source axis')
+  })
+  await check('Selective color shifts the picked hue and leaves the rest alone', () => {
+    const picked = createEdits({ colorShifts: [{ hex: '#fa1414' }] })
+    assert(equalPixels(original, processPhoto(original, picked)), 'a picked color alone already changes pixels')
+    const shifted = processPhoto(original, createEdits({ colorShifts: [{ hex: '#fa1414', hue: 120 }] }))
+    const before = bytes(original), after = bytes(shifted)
+    const px = (data, x, y) => [...data.slice((y * 80 + x) * 4, (y * 80 + x) * 4 + 3)].join(',')
+    assert(px(after, 5, 5) !== px(before, 5, 5), 'picked red stayed ' + px(after, 5, 5))
+    assert(px(after, 60, 5) === px(before, 60, 5), 'untouched green became ' + px(after, 60, 5))
   })
   await check('Batch preview respects disabled per-image edits', async () => {
     const s = freshLibrary(); await s.addFiles([png]); s.patchEdits({ crop: { x: 0, y: 0, width: 0.5, height: 0.5 } }); s.batch.applyEdits = false
@@ -276,5 +286,6 @@ globalThis.runImejiiAudit = async () => {
     await s.clearAll()
     return { ms: Math.round(performance.now() - start) }
   })
+  await photoUpgradeChecks(check)
   return { userAgent: navigator.userAgent, results }
 }

@@ -9,6 +9,7 @@ import { saveBlob, saveFileSet, confirmDiscard } from '../lib/desktop.js'
 import { getPreset } from '../lib/presets.js'
 import { hexToRgb, rgbToHex } from '../lib/color.js'
 import { useUiStore } from './ui.js'
+import { DEFAULT_METADATA } from '../lib/photoMetadata.js'
 
 /** Obere und untere Kantenlaenge, mit der die Vorschau gerechnet wird. */
 const PREVIEW_MAX_SIZE = 1280
@@ -35,6 +36,7 @@ function loadStoredPresets() {
 export const useEditorStore = defineStore('editor', () => {
   // --- Quelle & Ergebnis -------------------------------------------------
   const source = shallowRef(null) // { name, width, height, imageData, ... }
+  const metadataOptions = ref({ ...DEFAULT_METADATA })
   const previewCanvas = shallowRef(null)
   const originalCanvas = shallowRef(null)
   const renderVersion = ref(0)
@@ -181,6 +183,7 @@ export const useEditorStore = defineStore('editor', () => {
       clearTimeout(qualityTimer)
       sourceFile.value = markRaw(file)
       source.value = markRaw(loaded)
+      source.value.draftId = 'logo:' + crypto.randomUUID()
       previewScale.value = 1
       previewBudget.value = PREVIEW_MAX_SIZE
 
@@ -205,6 +208,8 @@ export const useEditorStore = defineStore('editor', () => {
           'Image reduced to ' + loaded.width + ' x ' + loaded.height + ' px (working limit).',
           6000,
         )
+      } else if (loaded.warnings?.length) {
+        setNotice('info', loaded.warnings.join(' '), 10000)
       }
       return true
     } catch (error) {
@@ -380,6 +385,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   async function exportSingleImpl({ size = null, format = 'png', quality = 0.92, background = null } = {}) {
     if (!source.value) return
+    const metadata = source.value.metadata, metadataSettings = { ...metadataOptions.value }
     const exportBaseName = baseName.value
     const canvas = await processPhotoAsync(originalCanvas.value, settings.value, { kind: 'logo' }, exportController?.signal)
     const config = EXPORT_FORMATS[format] || EXPORT_FORMATS.png
@@ -389,7 +395,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (size) target = renderToSize(canvas, size, size, { background: fill })
     else if (fill) target = renderToSize(canvas, canvas.width, canvas.height, { background: fill })
 
-    const blob = await canvasToBlob(target, format, quality)
+    const blob = await canvasToBlob(target, format, quality, metadata, metadataSettings)
     const suffix = size ? '-' + size : ''
     const fileName = exportBaseName + suffix + '.' + config.extension
     const result = await saveBlob(blob, fileName, { signal: exportController?.signal })
@@ -409,6 +415,7 @@ export const useEditorStore = defineStore('editor', () => {
   async function exportCustomSizesImpl(sizes, { format = 'png', quality = 0.92, background = null }) {
     sizes = [...sizes]
     if (!source.value || !sizes.length) return
+    const metadata = source.value.metadata, metadataSettings = { ...metadataOptions.value }
     const exportBaseName = baseName.value
     const canvas = await processPhotoAsync(originalCanvas.value, settings.value, { kind: 'logo' }, exportController?.signal)
     const files = await renderSizeSet(canvas, sizes, {
@@ -416,6 +423,7 @@ export const useEditorStore = defineStore('editor', () => {
       quality,
       background,
       baseName: exportBaseName,
+      metadata, metadataOptions: metadataSettings,
     })
     if (files.length === 1) {
       const result = await saveBlob(files[0].blob, files[0].name, { signal: exportController?.signal })
@@ -431,6 +439,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   async function exportPresetImpl(presetId, { background = null } = {}) {
     if (!source.value) return
+    const metadata = source.value.metadata, metadataSettings = { ...metadataOptions.value }
     const preset = getPreset(presetId)
     if (!preset) throw new Error('Unknown preset: ' + presetId)
 
@@ -441,7 +450,7 @@ export const useEditorStore = defineStore('editor', () => {
     for (const entry of preset.pngs || []) {
       exportController?.signal.throwIfAborted()
       const target = renderToSize(canvas, entry.size, entry.size, { background })
-      files.push({ name: entry.name, blob: await canvasToBlob(target, 'png') })
+      files.push({ name: entry.name, blob: await canvasToBlob(target, 'png', 0.92, metadata, metadataSettings) })
     }
 
     if (preset.ico) {
@@ -464,12 +473,13 @@ export const useEditorStore = defineStore('editor', () => {
   /** Kopiert das Ergebnis als PNG in die Zwischenablage. */
   async function copyToClipboardImpl() {
     if (!source.value) return
+    const metadata = source.value.metadata, metadataSettings = { ...metadataOptions.value }
     if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
       setNotice('error', 'This browser does not support the clipboard.')
       return
     }
     const canvas = await processPhotoAsync(originalCanvas.value, settings.value, { kind: 'logo' }, exportController?.signal)
-    const blob = await canvasToBlob(canvas, 'png')
+    const blob = await canvasToBlob(canvas, 'png', 0.92, metadata, metadataSettings)
     exportController?.signal.throwIfAborted()
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
     setNotice('success', 'PNG copied to the clipboard.')
@@ -490,7 +500,30 @@ export const useEditorStore = defineStore('editor', () => {
   const exportPreset = (...args) => runExport(() => exportPresetImpl(...args))
   const copyToClipboard = () => runExport(copyToClipboardImpl)
 
+  function draftState() {
+    return { settings: cloneSettings(settings.value), undo: [...undoStack.value], redo: [...redoStack.value], committed: lastCommitted.value }
+  }
+  async function restoreDraft(draft) {
+    if (!draft.state?.settings || typeof draft.state.settings !== 'object') throw new Error('Project has no valid logo settings.')
+    const parse = value => JSON.stringify(cloneSettings(JSON.parse(value)))
+    const restoredSettings = cloneSettings(draft.state.settings)
+    const restoredUndo = (Array.isArray(draft.state.undo) ? draft.state.undo : []).slice(-HISTORY_LIMIT).map(parse)
+    const restoredRedo = (Array.isArray(draft.state.redo) ? draft.state.redo : []).slice(-HISTORY_LIMIT).map(parse)
+    const committed = JSON.stringify(restoredSettings)
+    if (draft.state.committed && parse(draft.state.committed) !== committed) restoredUndo.push(parse(draft.state.committed))
+    if (!await loadFile(draft.file)) return false
+    source.value.draftId = draft.id
+    settings.value = restoredSettings
+    undoStack.value = restoredUndo
+    redoStack.value = restoredRedo
+    lastCommitted.value = committed
+    clearTimeout(historyTimer)
+    scheduleRender()
+    return true
+  }
+
   return {
+    draftState, restoreDraft, metadataOptions,
     sourceFile,
     isDirty,
     hasPendingWork,

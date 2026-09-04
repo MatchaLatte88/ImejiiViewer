@@ -1,6 +1,8 @@
 import { resolveImageFile } from './desktop.js'
 import { checkImageFile, checkDimensions } from './imageLimits.js'
 import { rgbToHex } from './color.js'
+import { prepareImageFile } from './extendedFormats.js'
+import { readPhotoMetadata } from './photoMetadata.js'
 
 /** Formate, die als Eingabe akzeptiert werden. */
 export const ACCEPTED_TYPES = [
@@ -13,6 +15,7 @@ export const ACCEPTED_TYPES = [
   'image/svg+xml',
   'image/x-icon',
   'image/vnd.microsoft.icon',
+  'image/heic', 'image/heif', 'image/tiff',
 ]
 
 export const ACCEPTED_EXTENSIONS = [
@@ -25,6 +28,7 @@ export const ACCEPTED_EXTENSIONS = [
   '.avif',
   '.svg',
   '.ico',
+  '.heic', '.heif', '.tif', '.tiff',
 ]
 
 /** Obergrenze der Arbeitsaufloesung - schuetzt Speicher und Laufzeit. */
@@ -66,7 +70,8 @@ export async function loadImageFile(file) {
 
   file = await resolveImageFile(file)
   await checkImageFile(file)
-  const url = URL.createObjectURL(file)
+  const prepared = await prepareImageFile(file)
+  const url = URL.createObjectURL(prepared.file)
   try {
     const img = await decodeViaImageElement(url)
 
@@ -108,6 +113,8 @@ export async function loadImageFile(file) {
       naturalWidth,
       naturalHeight,
       scaled,
+      warnings: prepared.warnings,
+      metadata: await readPhotoMetadata(file),
       imageData: ctx.getImageData(0, 0, width, height),
     }
   } finally {

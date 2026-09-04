@@ -18,7 +18,7 @@ dialog.showErrorBox = (title, message) => { consoleErrors.push(title + ': ' + me
 dialog.showOpenDialog = async (_window, options) => ({
   canceled: false, filePaths: options.properties.includes('openDirectory') ? [scratch] : [fixture, path.join(scratch, 'missing.png')],
 })
-dialog.showSaveDialog = async () => ({ canceled: false, filePath: path.join(scratch, 'saved.png') })
+dialog.showSaveDialog = async (_window, options) => ({ canceled: false, filePath: path.join(scratch, 'saved' + path.extname(options.defaultPath)) })
 app.on('web-contents-created', (_event, contents) => {
   contents.on('console-message', event => { if (event.level === 'error') consoleErrors.push(event.message) })
 })
@@ -29,6 +29,7 @@ async function until(test) { for (let i = 0; i < 200; i++) { if (await test()) r
 app.whenReady().then(async () => {
   await until(() => BrowserWindow.getAllWindows().length)
   const window = BrowserWindow.getAllWindows()[0], wc = window.webContents
+  wc.setBackgroundThrottling(false)
   await until(async () => {
     try { return await wc.executeJavaScript("Boolean(document.querySelector('#app')?.__vue_app__)") } catch { return false }
   })
@@ -138,6 +139,59 @@ app.whenReady().then(async () => {
     assert.equal(window.isDestroyed(), false)
     assert.ok(closePrompts >= 1)
   })
+  await check('Native TIFF export contains real TIFF bytes and portable projects keep original data', async () => {
+    await wc.executeJavaScript("library.saveActiveAs('tiff')")
+    const tiff = await fs.readFile(path.join(scratch, 'saved.tif'))
+    assert.deepEqual([...tiff.subarray(0, 4)], [73, 73, 42, 0])
+    await wc.executeJavaScript("stores()._s.get('drafts').exportCurrent()")
+    const project = await fs.readFile(path.join(scratch, 'saved.imejii'))
+    assert.equal(project.subarray(0, 8).toString(), 'IMEJII01')
+    const length = project.readUInt32BE(8), metadata = JSON.parse(project.subarray(12, 12 + length).toString())
+    assert.equal(metadata.kind, 'photo'); assert.ok(metadata.state.edits)
+    assert.deepEqual(project.subarray(12 + length), await fs.readFile(fixture))
+  })
+  await check('Local edits survive renderer restart in the production app profile', async () => {
+    await wc.executeJavaScript("library.patchEdits({ sharpen: 23 }); stores()._s.get('drafts').flush()")
+    await until(() => wc.executeJavaScript("!stores()._s.get('drafts').hasUnsavedWork"))
+    const before = await wc.executeJavaScript('JSON.stringify(library.activeItem.edits)')
+    await wc.reload()
+    await until(async () => { try { return await wc.executeJavaScript("Boolean(document.querySelector('#app')?.__vue_app__)") } catch { return false } })
+    await wc.executeJavaScript(`
+      globalThis.stores = () => Reflect.ownKeys(document.querySelector('#app').__vue_app__._context.provides).map(key => document.querySelector('#app').__vue_app__._context.provides[key]).find(value => value?._s);
+      globalThis.library = stores()._s.get('library'); globalThis.ui = stores()._s.get('ui'); void 0;
+    `)
+    await until(() => wc.executeJavaScript("stores()._s.get('drafts').entries.length > 0"))
+    await wc.executeJavaScript("stores()._s.get('drafts').restore(stores()._s.get('drafts').entries[0].id)")
+    assert.equal(await wc.executeJavaScript('JSON.stringify(library.activeItem.edits)'), before)
+    assert.equal(await wc.executeJavaScript('library.canUndo'), true)
+  })
+  await check('HEIC decoder works under the unmodified production CSP', async () => {
+    const fixtureModule = await fs.readFile(path.join(__dirname, 'fixtures/heic.js'), 'utf8')
+    const data = fixtureModule.match(/export const rainbowHeic = '([^']+)'/)[1]
+    const result = await wc.executeJavaScript(`(async () => {
+      const file = new File([Uint8Array.from(atob(${JSON.stringify(data)}), c => c.charCodeAt(0))], 'rainbow.heic', { type: 'image/heic' });
+      const ids = await library.addFiles([file]); const item = library.items.find(item => item.id === ids[0]);
+      return item ? [item.width, item.height] : null;
+    })()`)
+    assert.deepEqual(result, [451, 461])
+  })
+  if (process.env.IMEJII_UI_SCREENSHOT) {
+    await wc.executeJavaScript("ui.setMode('images'); ui.panels.tools = true; ui.panels.export = true; library.select(library.items.at(-1).id)")
+    window.setSize(1440, 1000); await pause(500)
+    await wc.executeJavaScript("Promise.all([...document.images].map(image => { image.loading = 'eager'; return image.decode().catch(() => {}); }))")
+    await fs.writeFile(process.env.IMEJII_UI_SCREENSHOT, (await wc.capturePage()).toPNG())
+    await wc.executeJavaScript(`
+      [...document.querySelectorAll('.sidebar button')].find(button => button.textContent.includes('+ Radial'))?.click();
+      library.activeItem.edits.localMasks[0].exposure = -0.5;
+      void 0;
+    `)
+    await until(() => wc.executeJavaScript("Boolean(document.querySelector('.map')) && !library.isRendering"))
+    await wc.executeJavaScript("const section = document.querySelector('.map').closest('.panel-section'); const sidebar = document.querySelector('.sidebar'); sidebar.scrollTop += section.getBoundingClientRect().top - sidebar.getBoundingClientRect().top; ui.dismissNotice(); void 0")
+    // Hidden test windows can return the preceding compositor frame on capture.
+    await wc.capturePage(); window.setSize(1441, 1000); await pause(300)
+    window.setSize(1440, 1000); await pause(300)
+    await fs.writeFile(process.env.IMEJII_UI_SCREENSHOT.replace('.png', '-local.png'), (await wc.capturePage()).toPNG())
+  }
   // The single intentional CSP violation is expected and recorded separately.
   const unexpectedErrors = consoleErrors.filter(message => !/Executing inline script violates|Refused to execute inline script/.test(message))
   console.log(JSON.stringify({ results, consoleErrors: unexpectedErrors, scratch }, null, 2))

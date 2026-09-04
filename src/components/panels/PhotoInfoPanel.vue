@@ -19,6 +19,7 @@ const fileRows = computed(() => {
   return [
     { label: 'File', value: current.name },
     { label: 'Type', value: current.type || 'unknown' },
+    { label: 'Working color', value: current.colorSpace || 'sRGB · 8-bit' },
     { label: 'Size on disk', value: formatBytes(current.size) },
     { label: 'Dimensions', value: current.width + ' x ' + current.height + ' px' },
     { label: 'Megapixels', value: megapixels.toFixed(1) + ' MP' },
@@ -42,6 +43,9 @@ onMounted(() => store.ensureHistogram())
 
 <template>
   <div class="panel">
+    <section v-if="item?.warnings?.length" class="panel-section">
+      <p v-for="warning in item.warnings" :key="warning" class="hint">{{ warning }}</p>
+    </section>
     <section class="panel-section">
       <div class="section-title">
         <span>Histogram</span>
