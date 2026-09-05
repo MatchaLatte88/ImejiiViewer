@@ -12,6 +12,7 @@ import PhotoInfoPanel from './panels/PhotoInfoPanel.vue'
 import PhotoExportPanel from './panels/PhotoExportPanel.vue'
 import AppIcon from './ui/AppIcon.vue'
 import AppButton from './ui/AppButton.vue'
+import PluginPanel from './panels/PluginPanel.vue'
 
 const props = defineProps({
   isDragging: { type: Boolean, default: false },
@@ -28,6 +29,7 @@ const TOOLS = [
   { id: 'adjust', label: 'Adjust', icon: 'sliders', component: PhotoAdjustPanel },
   { id: 'transform', label: 'Transform', icon: 'crop', component: PhotoTransformPanel },
   { id: 'info', label: 'Info', icon: 'info', component: PhotoInfoPanel },
+  { id: 'plugins', label: 'Plugins', icon: 'wand', component: PluginPanel },
 ]
 
 const activePanel = computed(

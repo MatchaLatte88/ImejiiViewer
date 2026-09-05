@@ -1,7 +1,9 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useDraftStore } from '../stores/drafts.js'
+import { useStudioStore } from '../stores/studio.js'
 const store = useDraftStore()
+const studio = useStudioStore()
 const expanded = ref(false)
 const projectInput = ref(null)
 onMounted(() => { void store.start() })
@@ -15,6 +17,8 @@ onBeforeUnmount(() => store.dispose())
       <span role="status" aria-live="polite" :class="{ warning: store.status === 'error' }">
         {{ store.status === 'saving' ? 'Saving original + edits…' : store.status === 'pending' ? 'Unsaved changes…' : store.status === 'error' ? 'Local save failed' : 'Edits are saved locally' }}
       </span>
+      <span v-if="studio.dirty" role="status" :class="{ warning: studio.saveState === 'error' }">Studio: {{ studio.saveState === 'error' ? 'save failed' : 'saving changes…' }}</span>
+      <button v-if="studio.saveState === 'error'" type="button" @click="studio.flush().catch(() => {})">Retry Studio save</button>
       <button v-if="store.status === 'error' || store.status === 'pending'" type="button" @click="store.flush()">Save now</button>
       <button type="button" :disabled="store.restoring || store.projectBusy" @click="projectInput.click()">Open project</button>
       <button type="button" :disabled="!store.canExport || store.restoring || store.projectBusy" @click="store.exportCurrent()">{{ store.projectBusy ? 'Saving project…' : 'Save project…' }}</button>
@@ -27,7 +31,7 @@ onBeforeUnmount(() => store.dispose())
         <p v-if="!store.entries.length">Your first edit will appear here automatically.</p>
         <ul v-else>
           <li v-for="entry in store.entries" :key="entry.id">
-            <div><strong>{{ entry.name }}</strong><small>{{ entry.kind === 'logo' ? 'Logo' : 'Photo' }} · {{ new Date(entry.updated).toLocaleString() }}</small></div>
+            <div><strong>{{ entry.name }}</strong><small>{{ entry.kind === 'studio' ? 'AI Studio' : entry.kind === 'logo' ? 'Logo' : 'Photo' }} · {{ new Date(entry.updated).toLocaleString() }}</small></div>
             <button type="button" :disabled="store.restoring" @click="store.restore(entry.id)">Restore</button>
             <button type="button" :disabled="store.restoring" @click="store.exportProject(entry.id)">Project…</button>
             <button type="button" :disabled="store.restoring" :aria-label="'Delete saved copy of ' + entry.name" @click="store.remove(entry.id)">Delete copy</button>

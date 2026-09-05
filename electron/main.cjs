@@ -1,7 +1,10 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, protocol, net, session } = require('electron')
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, protocol, net, session, utilityProcess } = require('electron')
 const path = require('node:path')
 const { createFileAccess, saveSelectedFile, IMAGE_EXTENSIONS, MAX_FILES, safeParts, validatedBuffer } = require('./file-access.cjs')
 const { APP_URL, developmentURL, assertSender, serveApp } = require('./security.cjs')
+const { createModelManager } = require('./ai-models.cjs')
+const { createCutoutService } = require('./cutout.cjs')
+const { createSdxlService } = require('./sdxl.cjs')
 
 const DEV_SERVER_URL = developmentURL(app.isPackaged, process.env.VITE_DEV_SERVER_URL)
 const access = createFileAccess()
@@ -10,6 +13,17 @@ let rendererReady = false
 let dialogBusy = false
 let pendingPaths = []
 let draining = false
+const models = createModelManager({ root: path.join(app.getPath('userData'), 'ai-models'), notify: progress => {
+  if (mainWindow && !mainWindow.isDestroyed() && rendererReady) mainWindow.webContents.send('ai:model-progress', progress)
+} })
+const cutout = createCutoutService({
+  readModel: id => models.read(id),
+  spawn: () => utilityProcess.fork(path.join(__dirname, 'cutout-worker.cjs'), [], { serviceName: 'Imejii background removal', stdio: 'ignore', execArgv: [] }),
+  notify: progress => { if (mainWindow && !mainWindow.isDestroyed() && rendererReady) mainWindow.webContents.send('ai:cutout-progress', progress) },
+})
+const sdxl = createSdxlService({ notify: progress => {
+  if (mainWindow && !mainWindow.isDestroyed() && rendererReady) mainWindow.webContents.send('ai:studio-progress', progress)
+} })
 protocol.registerSchemesAsPrivileged([{ scheme: 'imejii', privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true } }])
 app.setAppUserModelId('io.imejii.viewer')
 
@@ -52,7 +66,7 @@ function createWindow() {
   mainWindow = window
   window.once('ready-to-show', () => { if (!window.isDestroyed()) window.show() })
   const contents = window.webContents
-  contents.on('did-start-loading', () => { rendererReady = false })
+  contents.on('did-start-loading', () => { rendererReady = false; models.dispose(); cutout.dispose(); sdxl.dispose() })
   contents.setWindowOpenHandler(() => ({ action: 'deny' }))
   for (const eventName of ['will-navigate', 'will-redirect', 'will-attach-webview']) contents.on(eventName, event => event.preventDefault())
   contents.on('will-prevent-unload', event => {
@@ -64,6 +78,9 @@ function createWindow() {
     if (choice === 1) event.preventDefault()
   })
   contents.on('render-process-gone', (_event, details) => {
+    sdxl.dispose()
+    cutout.dispose()
+    models.dispose()
     if (details.reason === 'clean-exit' || window.isDestroyed()) return
     const choice = dialog.showMessageBoxSync(window, {
       type: 'error', message: 'The image workspace stopped responding.',
@@ -73,6 +90,9 @@ function createWindow() {
     if (choice === 0) { access.reset(); contents.reload() } else window.destroy()
   })
   window.on('closed', () => {
+    sdxl.dispose()
+    cutout.dispose()
+    models.dispose()
     if (mainWindow === window) { mainWindow = null; rendererReady = false; access.reset() }
   })
   window.loadURL(DEV_SERVER_URL || APP_URL).catch(error => {
@@ -88,6 +108,7 @@ function buildMenu() {
       action('Open images...', 'CmdOrCtrl+O', 'open'), action('Save current image...', 'CmdOrCtrl+S', 'save'),
       { type: 'separator' }, action('View mode', 'CmdOrCtrl+1', 'mode:view'),
       action('Logo mode', 'CmdOrCtrl+2', 'mode:logo'), action('Image mode', 'CmdOrCtrl+3', 'mode:images'),
+      action('AI Studio (enabled plugin)', 'CmdOrCtrl+4', 'mode:ai-studio'),
       { type: 'separator' }, { role: process.platform === 'darwin' ? 'close' : 'quit' },
     ] },
     { label: '&Edit', submenu: [
@@ -171,6 +192,24 @@ handle('dialog:confirmDiscard', message => withDialog(async () => {
   return result.response === 1
 }))
 handle('app:info', () => ({ version: app.getVersion(), platform: process.platform, electron: process.versions.electron, chrome: process.versions.chrome }))
+handle('ai:model-status', id => models.status(id))
+handle('ai:model-install', id => models.install(id))
+handle('ai:model-read', id => models.read(id))
+handle('ai:model-remove', id => models.remove(id))
+handle('ai:model-cancel', id => models.cancel(id))
+handle('ai:cutout-run', payload => {
+  if (sdxl.busy) throw new Error('SDXL is still active. Wait for the backend job to finish.')
+  return cutout.run(payload)
+})
+handle('ai:cutout-cancel', id => cutout.cancel(id))
+handle('ai:studio-connect', config => sdxl.connect(config))
+handle('ai:studio-run', payload => {
+  if (cutout.busy) throw new Error('Background removal is still active.')
+  return sdxl.run(payload)
+})
+handle('ai:studio-cancel', id => sdxl.cancel(id))
+handle('ai:studio-disconnect', () => sdxl.disconnect())
+app.on('before-quit', () => { cutout.dispose(); models.dispose(); sdxl.dispose() })
 
 if (!app.requestSingleInstanceLock()) app.quit()
 else {

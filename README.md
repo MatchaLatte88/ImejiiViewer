@@ -92,6 +92,25 @@ Der Startbildschirm ist ein reiner Betrachter – ein Bild, sonst nichts.
 
 `.png` `.jpg` `.jpeg` `.webp` `.gif` `.bmp` `.avif` `.svg` `.ico` `.heic` `.heif` `.tif` `.tiff`
 
+### Lokale KI-Plugins (Desktop)
+
+Unter **Images → Plugins** lassen sich die Werkzeuge einzeln aktivieren:
+
+- **Background removal:** Motiv mit BiRefNet Lite automatisch freistellen. Einmalig
+  224 MB Modell herunterladen, danach offline auf der CPU. Original-/Maskenvergleich,
+  helle/dunkle Prüfhintergründe, Kantenregler und Korrekturpinsel mit Undo/Redo.
+  **Subject Studio** ergänzt getrennte Motiv-/Hintergrundkorrekturen, Portrait-Unschärfe,
+  Color Splash, eigene Hintergründe, Produktformate, Sticker mit Kontur/Schatten,
+  motivbewussten Zuschnitt sowie Maskenübergabe an LaMa und Bild-/Maskenexport für SDXL.
+  Übernehmen erzeugt eine separate gerenderte PNG-Variante; das Original bleibt
+  erhalten. Studio-Stile sind im Ergebnis gerastert, keine editierbaren Ebenen.
+  [Bedienung und Grenzen](docs/AI-CUTOUT.md).
+- **Object removal:** Markierte Objekte mit LaMa entfernen; eigener Modell-Download
+  von 208 MB und unabhängige Aktivierung. [Bedienung und Grenzen](docs/AI-OBJECT-REMOVAL.md).
+
+Beide Werkzeuge unterstützen Fotos bis 24 MP. Modellgewichte werden nicht im Installer
+mitgeliefert. Gespeicherte Varianten und Projekte öffnen auch ohne aktives Plugin.
+
 ### Dauerhafte Foto-Bearbeitung
 
 Automatische lokale Sicherungen enthalten Original, Einstellungen und Undo/Redo. Über „Saved work“
@@ -263,12 +282,33 @@ Logo-Export laufen in einem abbrechbaren Worker.
 
 ## Speicherung und Datenschutz
 
-Bildverarbeitung erfolgt lokal, ohne Upload, Analyse- oder Telemetriedienst. Die Desktop-App
+Bildverarbeitung erfolgt lokal, ohne Cloud-Upload, Analyse- oder Telemetriedienst. AI Studio
+kopiert ausgewählte Bild-/Maskendaten erst auf Nutzeraktion zur eigenen lokalen ComfyUI.
+Die Desktop-App
 blockiert externe Renderer-Netzwerkanfragen. Theme und selbst gespeicherte Logo-Presets
 liegen lokal im App-Profil bzw. Browser-localStorage. Quelldateien werden nicht verändert,
 außer wenn man im nativen „Speichern unter“-Dialog ausdrücklich eine bestehende Datei ersetzt.
 
-Bearbeitungen und die aktuelle Sammlung werden nicht als Projekt dauerhaft gespeichert.
-Vor Schließen oder Verwerfen geänderter Bilder erscheint eine Rückfrage. Ein exportiertes
-Rasterbild enthält das Ergebnis, nicht den Undo-Verlauf. Bei Prozessabsturz oder Stromausfall
-können nicht exportierte Änderungen verloren gehen. Die App installiert keine automatischen Updates.
+Bearbeitungen werden über „Saved work“ lokal gesichert; portable `.imejii`-Projekte
+lassen sich separat exportieren. AI Studio speichert Quellen, Masken, Striche und Varianten
+dauerhaft; ein `IMEJII02`-Projekt nimmt die Binärartefakte mit. Nicht übernommene
+Cutout-/LaMa-Dialogvorschauen bleiben im Arbeitsspeicher. Vor deren Verwerfen erscheint
+eine Rückfrage; ein Absturz kann diese Zwischenstände verlieren. Ein exportiertes
+Rasterbild enthält das Ergebnis, nicht den Undo-Verlauf. Die App installiert keine automatischen Updates.
+
+## AI Studio · SDXL
+
+Optional unter **Images → Plugins → AI Studio · SDXL** aktivieren. Ein eigener
+Hauptmodus bietet SDXL Text-to-Image, Inpainting und Outpainting mit festen lokalen
+Workflows, Maskenpinsel, Randverlängerung, Varianten, lokale Sitzungen und direkte
+Übergabe aus Subject Studio. Lokale Community-SDXL-Checkpoints im `.safetensors`-Format
+lassen sich aus der von ComfyUI gemeldeten Modellliste auswählen; jede Kombination aus
+Modell und Workflow erhält einen eigenen Testlauf. Originale bleiben erhalten. Der erste Adapter verbindet
+eine selbst gestartete ComfyUI auf `127.0.0.1`; Runtime und SDXL-Gewichte werden nicht
+mitgeliefert oder automatisch geladen. Eine später verwaltete Runtime soll ComfyUI im
+normalen Betrieb unsichtbar starten und beenden.
+
+**Entwicklungsstand:** UI-, Masken-, Speicher- und Protokolltests vorhanden. Die echte
+SDXL-Modell-/Hardwareabnahme steht aus; der erste Lauf pro Verbindung ist deshalb
+ausdrücklich ein lokaler Test. Einrichtung, Workflow, Grenzen und Tests:
+[AI Studio](docs/SDXL-STUDIO.md).

@@ -1,5 +1,8 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useStudioStore } from './stores/studio.js'
+import { plugins } from './plugins/registry.js'
+import { pluginActivity } from './plugins/host.js'
 import { useUiStore } from './stores/ui.js'
 import { useEditorStore } from './stores/editor.js'
 import { useLibraryStore } from './stores/library.js'
@@ -18,6 +21,8 @@ const ui = useUiStore()
 const editor = useEditorStore()
 const library = useLibraryStore()
 const drafts = useDraftStore()
+const studio = useStudioStore()
+const StudioWorkspace = defineAsyncComponent(plugins.find(entry => entry.manifest.workspace === 'ai-studio').loadWorkspace)
 const { toggleTheme } = useTheme()
 
 const fileInput = ref(null)
@@ -29,11 +34,12 @@ let releaseFiles = null
 const accept = ACCEPTED_EXTENSIONS.join(',')
 const isImageMode = computed(() => ui.mode === 'images')
 /** Betrachter und Bildmodus teilen sich die Bibliothek, der Logo-Modus nicht. */
-const usesLibrary = computed(() => ui.mode !== 'logo')
-const hasContent = computed(() => (usesLibrary.value ? library.hasItems : editor.hasImage))
+const usesLibrary = computed(() => ['view', 'images'].includes(ui.mode))
+const hasContent = computed(() => ui.mode === 'ai-studio' ? studio.hasDocument : usesLibrary.value ? library.hasItems : editor.hasImage)
 
 /** Im Desktop kommt der Systemdialog, im Browser das versteckte File-Input. */
 async function openFileDialog() {
+  if (pluginActivity.active) return
   if (!isDesktop) {
     fileInput.value?.click()
     return
@@ -51,6 +57,7 @@ async function openFileDialog() {
 
 /** Dateien landen je nach Modus im Logo-Editor oder in der Bildbibliothek. */
 async function handleFiles(files) {
+  if (pluginActivity.active) return
   const targetMode = ui.mode
   const adopted = await adoptFiles(Array.from(files || []))
   const supported = adopted.files.filter(isSupportedFile)
@@ -59,7 +66,8 @@ async function handleFiles(files) {
     return
   }
 
-  if (targetMode !== 'logo') {
+  if (targetMode === 'ai-studio') { await studio.openFile(supported[0]); return }
+  if (['view', 'images'].includes(targetMode)) {
     const ids = await library.addFiles(supported)
     if (adopted.error) ui.setNotice('error', adopted.error, 10000)
     return ids
@@ -80,6 +88,7 @@ function onFileInput(event) {
 
 // --- Drag & Drop --------------------------------------------------------
 function onDragEnter(event) {
+  if (pluginActivity.active) return
   if (!event.dataTransfer?.types?.includes('Files')) return
   dragDepth++
   isDragging.value = true
@@ -96,12 +105,14 @@ function onDragLeave() {
 
 function onDrop(event) {
   event.preventDefault()
+  if (pluginActivity.active) return
   dragDepth = 0
   isDragging.value = false
   void handleFiles(event.dataTransfer?.files).catch(reportError)
 }
 
 function onPaste(event) {
+  if (pluginActivity.active) return
   const files = Array.from(event.clipboardData?.items || [])
     .filter((entry) => entry.kind === 'file' && entry.type.startsWith('image/'))
     .map((entry) => entry.getAsFile())
@@ -110,6 +121,7 @@ function onPaste(event) {
 }
 
 function onKeyDown(event) {
+  if (pluginActivity.active) return
   // Im Desktop bedient das Anwendungsmenue diese Kuerzel.
   if (isDesktop) return
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
@@ -132,6 +144,7 @@ let modeVersion = 0
  * wer aus dem Betrachter kommt, nimmt das sichtbare Bild also mit.
  */
 async function setMode(next) {
+  if (pluginActivity.active) return
   const version = ++modeVersion
   const item = usesLibrary.value ? library.activeItem : null
   if (next === 'logo' && item && editor.sourceFile !== item.file) {
@@ -145,13 +158,14 @@ async function setMode(next) {
 
 function reportError(error) { ui.setNotice('error', error.message || String(error), 8000) }
 function onBeforeUnload(event) {
-  if (!drafts.hasUnsavedWork && !drafts.projectBusy && !drafts.restoring && !library.isImporting && !library.isDecoding && !library.exportBusy && !library.batchProgress && !editor.isLoading && !editor.exportBusy) return
+  if (!pluginActivity.active && !studio.dirty && !studio.busy && !drafts.hasUnsavedWork && !drafts.projectBusy && !drafts.restoring && !library.isImporting && !library.isDecoding && !library.exportBusy && !library.batchProgress && !editor.isLoading && !editor.exportBusy) return
   event.preventDefault()
   event.returnValue = ''
 }
 
 // --- Menuebefehle aus dem Hauptprozess ----------------------------------
 async function saveCurrent() {
+  if (ui.mode === 'ai-studio') { await studio.exportResult(); return }
   if (usesLibrary.value) {
     if (library.activeItem) await library.saveActiveAs('png', 92)
   } else if (editor.hasImage) {
@@ -160,6 +174,7 @@ async function saveCurrent() {
 }
 
 async function handleMenuAction(action) {
+  if (pluginActivity.active) { window.dispatchEvent(new CustomEvent('imejii:plugin-command', { detail: action })); return }
   const target = document.activeElement
   if (['undo', 'redo'].includes(action) && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName) || target?.isContentEditable)) {
     document.execCommand(action)
@@ -174,10 +189,10 @@ async function handleMenuAction(action) {
       await saveCurrent()
       break
     case 'undo':
-      usesLibrary.value ? library.undo() : editor.undo()
+      ui.mode === 'ai-studio' ? studio.undo() : usesLibrary.value ? library.undo() : editor.undo()
       break
     case 'redo':
-      usesLibrary.value ? library.redo() : editor.redo()
+      ui.mode === 'ai-studio' ? studio.redo() : usesLibrary.value ? library.redo() : editor.redo()
       break
     case 'theme':
       toggleTheme()
@@ -191,6 +206,9 @@ async function handleMenuAction(action) {
     case 'mode:images':
       await setMode('images')
       break
+    case 'mode:ai-studio':
+      await setMode('ai-studio')
+      break
     default:
       break
   }
@@ -203,9 +221,15 @@ async function handleMenuAction(action) {
  * die spaeter hereingereicht werden. Aus dem Logo-Modus wechselt die App dafuer
  * in den Betrachter - dort ist Platz fuer beliebig viele Bilder.
  */
+const deferredExternalFiles = []
+watch(() => pluginActivity.active, async active => {
+  if (active) return
+  while (deferredExternalFiles.length && !pluginActivity.active) await receiveExternalFiles(deferredExternalFiles.shift()).catch(reportError)
+})
 async function receiveExternalFiles({ files, error }) {
+  if (pluginActivity.active) { deferredExternalFiles.push({ files, error }); return }
   if (!files.length) { if (error) reportError(new Error(error)); return }
-  if (ui.mode === 'logo') ui.setMode('view')
+  if (!['view', 'images'].includes(ui.mode)) ui.setMode('view')
 
   // Wer eine Datei im Explorer oeffnet, will genau sie sehen - nicht das Bild,
   // das gerade offen war.
@@ -246,7 +270,8 @@ onBeforeUnmount(() => {
     <main class="app__body">
       <ViewMode v-if="ui.mode === 'view'" :is-dragging="isDragging" @open-files="openFileDialog" />
       <ImageMode v-else-if="isImageMode" :is-dragging="isDragging" @open-files="openFileDialog" />
-      <LogoMode v-else :is-dragging="isDragging" @open-file="openFileDialog" />
+      <LogoMode v-else-if="ui.mode === 'logo'" :is-dragging="isDragging" @open-file="openFileDialog" />
+      <StudioWorkspace v-else-if="ui.mode === 'ai-studio'" @open-file="openFileDialog" />
     </main>
 
     <Transition name="toast">

@@ -1,0 +1,24 @@
+{
+  "lama-v1": {
+    "id": "lama-v1",
+    "name": "LaMa · FP32",
+    "revision": "c3c0c9e468934d62e79c329e35d82dd09ff8c444",
+    "url": "https://huggingface.co/Carve/LaMa-ONNX/resolve/c3c0c9e468934d62e79c329e35d82dd09ff8c444/lama_fp32.onnx",
+    "bytes": 208044816,
+    "sha256": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6",
+    "license": "Apache-2.0",
+    "modelCard": "https://huggingface.co/Carve/LaMa-ONNX",
+    "inputSize": 512
+  },
+  "birefnet-lite-v1": {
+    "id": "birefnet-lite-v1",
+    "name": "BiRefNet Lite · FP32",
+    "revision": "de15b22ba131738a16dff04aab8bdf8dc32e3ac1",
+    "url": "https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/de15b22ba131738a16dff04aab8bdf8dc32e3ac1/onnx/model.onnx",
+    "bytes": 224005088,
+    "sha256": "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333",
+    "license": "MIT",
+    "modelCard": "https://huggingface.co/onnx-community/BiRefNet_lite-ONNX",
+    "inputSize": 1024
+  }
+}

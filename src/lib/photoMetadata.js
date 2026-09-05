@@ -37,7 +37,14 @@ const ascii = value => String(value ?? '').replace(/[^\x20-\x7e]/g, '?').slice(0
 const tag = (id, type, values) => ({ id, type, values: typeof values === 'string' ? Array.from(values, c => c.charCodeAt(0)) : Array.from(values) })
 const rational = value => [Math.round(Math.abs(Number(value)) * 1000000), 1000000]
 function metadataTags(raw, options, width, height) {
-  const root = [tag(274, 3, [1]), tag(305, 2, ascii('Imejii'))]
+  const aiSoftware = options.aiModified === 'inpaint' ? 'Imejii / AI inpainting'
+    : options.aiModified === 'outpaint' ? 'Imejii / AI outpainting'
+      : options.aiModified === 'text-to-image' ? 'Imejii / AI text-to-image'
+    : options.aiModified === 'subject-composition' ? 'Imejii / AI subject composition'
+    : options.aiModified === 'background-removal' ? 'Imejii / AI background removal'
+    : options.aiModified ? 'Imejii / AI object removal'
+      : ['Imejii / AI inpainting', 'Imejii / AI outpainting', 'Imejii / AI text-to-image', 'Imejii / AI object removal', 'Imejii / AI background removal', 'Imejii / AI subject composition'].includes(raw.Software) ? raw.Software : 'Imejii'
+  const root = [tag(274, 3, [1]), tag(305, 2, ascii(aiSoftware))]
   const exif = [tag(40961, 3, [1]), tag(40962, 4, [width]), tag(40963, 4, [height])]
   const gps = []
   if (options.keepCamera) {

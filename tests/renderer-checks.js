@@ -12,6 +12,10 @@ import { createEdits, processPhoto, previewGeometry } from '../src/lib/photoPipe
 import { createIcoBlob } from '../src/lib/ico.js'
 import { cloneSettings, DEFAULT_SETTINGS, processImage } from '../src/lib/pipeline.js'
 import { photoUpgradeChecks } from './photo-upgrade-checks.js'
+import { aiChecks } from './ai-checks.js'
+import { cutoutChecks } from './cutout-checks.js'
+import { studioChecks } from './studio-checks.js'
+import { sdxlChecks } from './sdxl-checks.js'
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 const assert = (condition, detail) => { if (!condition) throw new Error(detail) }
@@ -287,5 +291,9 @@ globalThis.runImejiiAudit = async () => {
     return { ms: Math.round(performance.now() - start) }
   })
   await photoUpgradeChecks(check)
+  await aiChecks(check)
+  await cutoutChecks(check)
+  await studioChecks(check)
+  await sdxlChecks(check)
   return { userAgent: navigator.userAgent, results }
 }

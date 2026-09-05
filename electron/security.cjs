@@ -32,7 +32,9 @@ async function serveApp(request, distRoot, net) {
     if (!inside(root, real) || !(await fs.stat(real)).isFile()) return new Response('Not found', { status: 404 })
     const response = await net.fetch(pathToFileURL(real).href)
     const headers = new Headers(response.headers)
-    headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'")
+    headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'")
+    if (path.extname(real) === '.wasm') headers.set('Content-Type', 'application/wasm')
+    if (path.extname(real) === '.mjs') headers.set('Content-Type', 'text/javascript')
     headers.set('X-Content-Type-Options', 'nosniff')
     return new Response(response.body, { status: response.status, headers })
   } catch { return new Response('Not found', { status: 404 }) }

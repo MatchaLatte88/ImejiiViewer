@@ -25,6 +25,33 @@ contextBridge.exposeInMainWorld('desktopApi', {
 
   getAppInfo: () => ipcRenderer.invoke('app:info'),
 
+  aiModelStatus: id => ipcRenderer.invoke('ai:model-status', id),
+  aiModelInstall: id => ipcRenderer.invoke('ai:model-install', id),
+  aiModelRead: id => ipcRenderer.invoke('ai:model-read', id),
+  aiModelRemove: id => ipcRenderer.invoke('ai:model-remove', id),
+  aiModelCancel: id => ipcRenderer.invoke('ai:model-cancel', id),
+  aiCutoutRun: payload => ipcRenderer.invoke('ai:cutout-run', payload),
+  aiCutoutCancel: id => ipcRenderer.invoke('ai:cutout-cancel', id),
+  aiStudioConnect: config => ipcRenderer.invoke('ai:studio-connect', config),
+  aiStudioRun: payload => ipcRenderer.invoke('ai:studio-run', payload),
+  aiStudioCancel: id => ipcRenderer.invoke('ai:studio-cancel', id),
+  aiStudioDisconnect: () => ipcRenderer.invoke('ai:studio-disconnect'),
+  onAiStudioProgress: handler => {
+    const listener = (_event, progress) => handler(progress)
+    ipcRenderer.on('ai:studio-progress', listener)
+    return () => ipcRenderer.off('ai:studio-progress', listener)
+  },
+  onAiCutoutProgress: handler => {
+    const listener = (_event, progress) => handler(progress)
+    ipcRenderer.on('ai:cutout-progress', listener)
+    return () => ipcRenderer.off('ai:cutout-progress', listener)
+  },
+  onAiModelProgress: handler => {
+    const listener = (_event, progress) => handler(progress)
+    ipcRenderer.on('ai:model-progress', listener)
+    return () => ipcRenderer.off('ai:model-progress', listener)
+  },
+
   /** Dateien, mit denen die App geoeffnet wurde ("Oeffnen mit", Doppelklick). */
   getStartupFiles: () => ipcRenderer.invoke('files:startup'),
 

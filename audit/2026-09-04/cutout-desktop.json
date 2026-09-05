@@ -1,0 +1,49 @@
+{
+  "results": [
+    {
+      "name": "Both plugins enable independently and report their own model readiness",
+      "status": "PASS"
+    },
+    {
+      "name": "Cancel terminates actual BiRefNet inference and permits retry",
+      "status": "PASS"
+    },
+    {
+      "name": "Cutout workspace blocks native mode changes and keeps source edits unchanged",
+      "status": "PASS"
+    },
+    {
+      "name": "Real BiRefNet runs offline under production CSP and produces a soft transparent subject",
+      "status": "PASS",
+      "detail": {
+        "elapsedMs": 12285,
+        "transparent": 513880,
+        "opaque": 172542,
+        "soft": 12970,
+        "width": 1024,
+        "height": 683
+      }
+    },
+    {
+      "name": "Original/cutout comparison and preview backdrops never flatten the canvas",
+      "status": "PASS"
+    },
+    {
+      "name": "Manual correction, keyboard Undo/Redo and reset are deterministic",
+      "status": "PASS"
+    },
+    {
+      "name": "A failed collection restore keeps the preview and retries the same durable variant",
+      "status": "PASS"
+    },
+    {
+      "name": "Cutout PNG/project persist alpha, source dimensions, edge settings and model provenance",
+      "status": "PASS"
+    },
+    {
+      "name": "Saved cutout reopens after restart with its plugin disabled and LaMa still enabled",
+      "status": "PASS"
+    }
+  ],
+  "errors": []
+}

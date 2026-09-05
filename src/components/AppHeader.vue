@@ -3,6 +3,9 @@ import { computed } from 'vue'
 import { useUiStore } from '../stores/ui.js'
 import { useEditorStore } from '../stores/editor.js'
 import { useLibraryStore } from '../stores/library.js'
+import { usePluginStore } from '../stores/plugins.js'
+import { useStudioStore } from '../stores/studio.js'
+import { openCurrentInStudio } from '../plugins/studio-host.js'
 import { useTheme } from '../composables/useTheme.js'
 import AppButton from './ui/AppButton.vue'
 import AppIcon from './ui/AppIcon.vue'
@@ -11,6 +14,7 @@ import SegmentedControl from './ui/SegmentedControl.vue'
 const ui = useUiStore()
 const editor = useEditorStore()
 const library = useLibraryStore()
+const plugins = usePluginStore(), studio = useStudioStore()
 const { theme, toggleTheme } = useTheme()
 
 const emit = defineEmits(['open-file', 'set-mode'])
@@ -19,15 +23,22 @@ const isImageMode = computed(() => ui.mode === 'images')
 const isViewMode = computed(() => ui.mode === 'view')
 
 /** Betrachter und Bildmodus arbeiten an derselben Bibliothek. */
-const usesLibrary = computed(() => ui.mode !== 'logo')
+const usesLibrary = computed(() => ['view', 'images'].includes(ui.mode))
 
-const MODES = [
+const MODES = computed(() => [
   { value: 'logo', label: 'Logo', icon: 'palette', title: 'Cut out logos and build icon sets' },
   { value: 'images', label: 'Images', icon: 'layers', title: 'View, edit and convert photos' },
-]
+  ...(plugins.studioEnabled ? [{ value: 'ai-studio', label: 'AI Studio', icon: 'wand', title: 'Local SDXL creation and editing (Ctrl+4)' }] : []),
+])
 
 /** Der Header bedient alle Modi - hier laufen die Unterschiede zusammen. */
 const state = computed(() => {
+  if (ui.mode === 'ai-studio') {
+    const result = studio.selectedResult?.provenance
+    return { hasContent: studio.hasDocument, name: studio.document?.name, input: studio.hasSource ? studio.document.width + ' x ' + studio.document.height : null,
+      output: result ? result.outputWidth + ' x ' + result.outputHeight : studio.operation === 'text-to-image' && studio.document ? studio.document.parameters.width + ' x ' + studio.document.parameters.height : null,
+      canUndo: studio.canUndo, canRedo: studio.canRedo, canCompare: studio.hasSource && Boolean(studio.selectedResult?.provenance.sourceSha256), canReset: studio.operation === 'inpaint' && studio.hasSource, openLabel: 'Open source' }
+  }
   if (usesLibrary.value) {
     const item = library.activeItem
     const output = library.outputSize
@@ -55,25 +66,30 @@ const state = computed(() => {
 })
 
 function undo() {
-  isImageMode.value ? library.undo() : editor.undo()
+  ui.mode === 'ai-studio' ? studio.undo() : isImageMode.value ? library.undo() : editor.undo()
 }
 
 function redo() {
-  isImageMode.value ? library.redo() : editor.redo()
+  ui.mode === 'ai-studio' ? studio.redo() : isImageMode.value ? library.redo() : editor.redo()
 }
 
 function reset() {
-  isImageMode.value ? library.resetEdits() : editor.resetSettings()
+  try { ui.mode === 'ai-studio' ? studio.operation === 'inpaint' && studio.clearMask() : isImageMode.value ? library.resetEdits() : editor.resetSettings() }
+  catch (error) { ui.setNotice('error', error.message) }
 }
 
 function setCompare(value) {
+  if (ui.mode === 'ai-studio') { studio.compare = value; return }
   if (isImageMode.value) library.showOriginal = value
   else editor.showOriginal = value
 }
 
 const isComparing = computed(() =>
-  isImageMode.value ? library.showOriginal : editor.showOriginal,
+  ui.mode === 'ai-studio' ? studio.compare : isImageMode.value ? library.showOriginal : editor.showOriginal,
 )
+async function sendToStudio() {
+  try { await openCurrentInStudio(ui.mode) } catch (error) { ui.setNotice('error', error.message, 8000) }
+}
 </script>
 
 <template>
@@ -102,6 +118,7 @@ const isComparing = computed(() =>
     <!-- Der Betrachter bietet den Weg in die Bearbeitung an, die Werkzeugmodi
          den Weg zurueck. -->
     <div v-if="isViewMode" class="header__switch">
+      <AppButton v-if="plugins.studioEnabled" icon="wand" @click="emit('set-mode', 'ai-studio')">AI Studio</AppButton>
       <AppButton icon="palette" title="Cut out logos and build icon sets (Ctrl+2)" @click="emit('set-mode', 'logo')">
         Logo Creator
       </AppButton>
@@ -120,6 +137,7 @@ const isComparing = computed(() =>
       <AppButton icon="image" variant="ghost" title="Back to the viewer (Ctrl+1)" @click="emit('set-mode', 'view')" />
       <SegmentedControl
         class="header__modes"
+        :style="{ width: MODES.length * 95 + 'px' }"
         :model-value="ui.mode"
         :options="MODES"
         @update:model-value="emit('set-mode', $event)"
@@ -128,13 +146,13 @@ const isComparing = computed(() =>
 
     <div v-if="state.name" class="header__meta">
       <span class="header__filename" :title="state.name">{{ state.name }}</span>
-      <span class="header__divider" />
-      <span class="mono">{{ state.input }} px</span>
-      <AppIcon name="chevron" :size="12" />
-      <span class="mono header__output">{{ state.output }} px</span>
+      <template v-if="state.input"><span class="header__divider" /><span class="mono">{{ state.input }} px</span></template>
+      <AppIcon v-if="state.input && state.output" name="chevron" :size="12" />
+      <span v-if="state.output" class="mono header__output">{{ state.output }} px</span>
     </div>
 
     <div class="header__actions">
+      <AppButton v-if="plugins.studioEnabled && ui.mode !== 'ai-studio' && state.hasContent" icon="wand" variant="ghost" title="Open current rendered image in AI Studio" @click="sendToStudio" />
       <!-- Im Betrachter gibt es nichts zu bearbeiten - die Werkzeuge entfallen. -->
       <template v-if="!isViewMode">
         <AppButton
@@ -156,7 +174,7 @@ const isComparing = computed(() =>
           variant="ghost"
           title="Compare with original (hold Space)"
           :active="isComparing"
-          :disabled="!state.hasContent"
+          :disabled="ui.mode === 'ai-studio' ? !state.canCompare : !state.hasContent"
           @mousedown="setCompare(true)"
           @mouseup="setCompare(false)"
           @mouseleave="setCompare(false)"
@@ -164,8 +182,8 @@ const isComparing = computed(() =>
         <AppButton
           icon="reset"
           variant="ghost"
-          :title="isImageMode ? 'Reset edits for this image' : 'Reset all settings'"
-          :disabled="!state.hasContent"
+          :title="ui.mode === 'ai-studio' ? 'Clear selection (undoable)' : isImageMode ? 'Reset edits for this image' : 'Reset all settings'"
+          :disabled="ui.mode === 'ai-studio' ? !state.canReset || studio.busy || studio.drawing : !state.hasContent"
           @click="reset"
         />
         <span class="header__divider" />

@@ -1,0 +1,38 @@
+{
+  "provider": "TEST FIXTURE — no model inference",
+  "results": [
+    {
+      "name": "Optional Studio mode starts without a source/backend and preserves the Viewer default",
+      "status": "PASS"
+    },
+    {
+      "name": "Open, brush, undo and mode-switch commands target Studio and keep its source/mask session",
+      "status": "PASS"
+    },
+    {
+      "name": "Desktop broker connects only on action and the explicit validation run yields a preview",
+      "status": "PASS"
+    },
+    {
+      "name": "Narrow layout and light theme expose the canvas, prompt, setup and variant actions",
+      "status": "PASS"
+    },
+    {
+      "name": "Portable Studio project contains checksummed binary artifacts; Ctrl+S exports only selected variant",
+      "status": "PASS"
+    },
+    {
+      "name": "Cancel survives mode changes, ignores late backend results and never interrupts other jobs",
+      "status": "PASS"
+    },
+    {
+      "name": "Explicit acceptance opens a new photo with source, seed and workflow provenance",
+      "status": "PASS"
+    },
+    {
+      "name": "Reload restores a durable Studio session with its mask, variants and independent activation",
+      "status": "PASS"
+    }
+  ],
+  "errors": []
+}

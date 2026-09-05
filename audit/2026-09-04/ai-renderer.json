@@ -1,0 +1,369 @@
+{
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.7977.65 Electron/44.1.1 Safari/537.36",
+  "results": [
+    {
+      "name": "PNG identity, photo pipeline",
+      "status": "PASS"
+    },
+    {
+      "name": "PNG identity, logo pipeline",
+      "status": "PASS"
+    },
+    {
+      "name": "png encoder returns requested MIME and decodable pixels",
+      "status": "PASS"
+    },
+    {
+      "name": "jpeg encoder returns requested MIME and decodable pixels",
+      "status": "PASS"
+    },
+    {
+      "name": "webp encoder returns requested MIME and decodable pixels",
+      "status": "PASS"
+    },
+    {
+      "name": "ICO directory and embedded PNG signatures",
+      "status": "PASS"
+    },
+    {
+      "name": "EXIF orientation 1 matches native decoded JPEG",
+      "status": "PASS"
+    },
+    {
+      "name": "EXIF orientation 2 matches native decoded JPEG",
+      "status": "PASS"
+    },
+    {
+      "name": "EXIF orientation 3 matches native decoded JPEG",
+      "status": "PASS"
+    },
+    {
+      "name": "EXIF orientation 4 matches native decoded JPEG",
+      "status": "PASS"
+    },
+    {
+      "name": "EXIF orientation 5 matches native decoded JPEG",
+      "status": "PASS"
+    },
+    {
+      "name": "EXIF orientation 6 matches native decoded JPEG",
+      "status": "PASS"
+    },
+    {
+      "name": "EXIF orientation 7 matches native decoded JPEG",
+      "status": "PASS"
+    },
+    {
+      "name": "EXIF orientation 8 matches native decoded JPEG",
+      "status": "PASS"
+    },
+    {
+      "name": "Undo availability reacts after an edit",
+      "status": "PASS"
+    },
+    {
+      "name": "Undo survives immediate image switching",
+      "status": "PASS"
+    },
+    {
+      "name": "Apply to all can be undone on the receiving image",
+      "status": "PASS"
+    },
+    {
+      "name": "The latest selection wins asynchronous decoding",
+      "status": "PASS"
+    },
+    {
+      "name": "Horizontal flip after 90-degree rotation uses the displayed axis",
+      "status": "PASS"
+    },
+    {
+      "name": "Selective color shifts the picked hue and leaves the rest alone",
+      "status": "PASS"
+    },
+    {
+      "name": "Batch preview respects disabled per-image edits",
+      "status": "PASS"
+    },
+    {
+      "name": "Batch-generated filenames stay unique after collision suffixes",
+      "status": "PASS"
+    },
+    {
+      "name": "Batch captures settings before asynchronous rendering",
+      "status": "PASS"
+    },
+    {
+      "name": "Favicon bundle PNG filenames contain PNG data even if JPEG was selected",
+      "status": "PASS"
+    },
+    {
+      "name": "Folder navigation preserves edited images when returning from editor to viewer",
+      "status": "PASS"
+    },
+    {
+      "name": "Photo geometry calculations match canvas dimensions",
+      "status": "PASS"
+    },
+    {
+      "name": "Logo loader applies its documented 4096px working limit",
+      "status": "PASS"
+    },
+    {
+      "name": "JPEG transparency uses a white matte",
+      "status": "PASS"
+    },
+    {
+      "name": "Undo is immediately available before the debounce fires",
+      "status": "PASS"
+    },
+    {
+      "name": "Rotation preserves a previously applied display-axis flip",
+      "status": "PASS"
+    },
+    {
+      "name": "Batch snapshot survives collection mutation and watermark changes",
+      "status": "PASS"
+    },
+    {
+      "name": "Cancel batch stops writes and closes its export session",
+      "status": "PASS"
+    },
+    {
+      "name": "Clear collection invalidates a pending decode",
+      "status": "PASS"
+    },
+    {
+      "name": "Logo replacement cancellation keeps its source and edits",
+      "status": "PASS"
+    },
+    {
+      "name": "Failed export resets the shared busy state",
+      "status": "PASS"
+    },
+    {
+      "name": "Multiple simultaneous saves produce one dialog",
+      "status": "PASS"
+    },
+    {
+      "name": "Oversized PNG header is rejected before decoding",
+      "status": "PASS"
+    },
+    {
+      "name": "Canvas allocation is bounded",
+      "status": "PASS"
+    },
+    {
+      "name": "Native file metadata and partial selection successes survive",
+      "status": "PASS"
+    },
+    {
+      "name": "Case-insensitive, reserved and nested suffix names stay safe",
+      "status": "PASS"
+    },
+    {
+      "name": "Cancel single-photo export does not save and releases busy state",
+      "status": "PASS"
+    },
+    {
+      "name": "Cancel logo worker export does not save",
+      "status": "PASS"
+    },
+    {
+      "name": "12MP and 24MP pixel processing runs off the UI thread",
+      "status": "PASS",
+      "detail": [
+        {
+          "megapixels": 12,
+          "ms": 1806,
+          "uiTicks": 116
+        },
+        {
+          "megapixels": 24,
+          "ms": 4292,
+          "uiTicks": 241
+        }
+      ]
+    },
+    {
+      "name": "1,000-thumbnail collection is bounded and the next import is rejected",
+      "status": "PASS",
+      "detail": {
+        "ms": 1062
+      }
+    },
+    {
+      "name": "png preserves allow-listed metadata, removes GPS and normalizes orientation",
+      "status": "PASS"
+    },
+    {
+      "name": "jpeg preserves allow-listed metadata, removes GPS and normalizes orientation",
+      "status": "PASS"
+    },
+    {
+      "name": "webp preserves allow-listed metadata, removes GPS and normalizes orientation",
+      "status": "PASS"
+    },
+    {
+      "name": "tiff preserves allow-listed metadata, removes GPS and normalizes orientation",
+      "status": "PASS"
+    },
+    {
+      "name": "GPS is explicitly opt-in; stripping camera does not discard an explicit creator",
+      "status": "PASS"
+    },
+    {
+      "name": "Tagged Display P3 is converted to sRGB once and export keeps the converted colors",
+      "status": "PASS",
+      "detail": {
+        "input": [
+          180,
+          100,
+          100
+        ],
+        "srgb": [
+          193,
+          95,
+          98
+        ]
+      }
+    },
+    {
+      "name": "TIFF orientation 2 is applied exactly once",
+      "status": "PASS"
+    },
+    {
+      "name": "TIFF orientation 5 is applied exactly once",
+      "status": "PASS"
+    },
+    {
+      "name": "TIFF orientation 6 is applied exactly once",
+      "status": "PASS"
+    },
+    {
+      "name": "TIFF orientation 8 is applied exactly once",
+      "status": "PASS"
+    },
+    {
+      "name": "Real HEIC decodes in a dedicated CSP-safe worker without uploading",
+      "status": "PASS",
+      "detail": {
+        "width": 451,
+        "height": 461
+      }
+    },
+    {
+      "name": "Malformed HEIC and oversized TIFF are rejected",
+      "status": "PASS"
+    },
+    {
+      "name": "TIFF 16-bit input reduces predictably and associated alpha is unpremultiplied",
+      "status": "PASS"
+    },
+    {
+      "name": "Deflate TIFF is decoded, but expansion beyond declared dimensions is rejected",
+      "status": "PASS"
+    },
+    {
+      "name": "Neutral tone controls preserve pixels; shadows, highlights and curve change their regions",
+      "status": "PASS"
+    },
+    {
+      "name": "Local masks preserve alpha/source and stay attached through geometry",
+      "status": "PASS"
+    },
+    {
+      "name": "Drafts retain original bytes, independent variants and pending undo across fresh stores",
+      "status": "PASS"
+    },
+    {
+      "name": "Portable photo and logo projects round-trip and detect damaged originals",
+      "status": "PASS"
+    },
+    {
+      "name": "Autosave flush drains concurrent changes and guards quota failures",
+      "status": "PASS"
+    },
+    {
+      "name": "Imported recipes are bounded, normalized and cannot request huge effects",
+      "status": "PASS"
+    },
+    {
+      "name": "White-balance pipette samples the original and is repeatable after existing edits",
+      "status": "PASS"
+    },
+    {
+      "name": "Plugin manifests reject incompatible APIs and undeclared capabilities",
+      "status": "PASS"
+    },
+    {
+      "name": "Mask paint/erase/undo replay is deterministic and bounded",
+      "status": "PASS"
+    },
+    {
+      "name": "Context regions respect corners and non-square image geometry",
+      "status": "PASS"
+    },
+    {
+      "name": "Composition leaves unmasked RGBA bytes and all alpha values untouched",
+      "status": "PASS"
+    },
+    {
+      "name": "Full-resolution inpainting projection changes only the composition mask",
+      "status": "PASS"
+    },
+    {
+      "name": "Runtime cancels model loading before creating a worker and rejects concurrent jobs",
+      "status": "PASS"
+    },
+    {
+      "name": "Runtime ignores stale results, times out, and terminates owned workers",
+      "status": "PASS"
+    },
+    {
+      "name": "Plugin host rejects stale snapshots and preserves durable variants without a plugin",
+      "status": "PASS"
+    },
+    {
+      "name": "Browser adapter has no desktop privileges",
+      "status": "PASS"
+    },
+    {
+      "name": "Browser file sets produce a valid ZIP with all files",
+      "status": "PASS"
+    },
+    {
+      "name": "Canceled browser file set triggers no download",
+      "status": "PASS"
+    },
+    {
+      "name": "Browser Ctrl+S exports the active image",
+      "status": "PASS"
+    },
+    {
+      "name": "Ctrl/Alt combinations never invoke plain photo edit shortcuts",
+      "status": "PASS"
+    },
+    {
+      "name": "Typing undo stays inside the input field",
+      "status": "PASS"
+    },
+    {
+      "name": "Disabled segmented controls use native disabled buttons",
+      "status": "PASS"
+    },
+    {
+      "name": "Notices have live-region semantics",
+      "status": "PASS"
+    },
+    {
+      "name": "Unsaved browser work cancels beforeunload",
+      "status": "PASS"
+    },
+    {
+      "name": "Actual-pixel view loads the full source on demand",
+      "status": "PASS"
+    }
+  ],
+  "errors": []
+}

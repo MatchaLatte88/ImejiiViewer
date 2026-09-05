@@ -1,0 +1,40 @@
+{
+  "results": [
+    {
+      "name": "AI IPC rejects arbitrary model IDs, URLs and paths",
+      "status": "PASS"
+    },
+    {
+      "name": "Isolated workspace blocks native edit/mode shortcuts",
+      "status": "PASS"
+    },
+    {
+      "name": "Real mask Undo and Redo preserve pixels",
+      "status": "PASS"
+    },
+    {
+      "name": "Cancel terminates real inference and retains the editable mask",
+      "status": "PASS"
+    },
+    {
+      "name": "Real LaMa inference runs offline in the production CSP worker",
+      "status": "PASS",
+      "detail": {
+        "elapsedMs": 26693
+      }
+    },
+    {
+      "name": "Before/After is reversible without modifying the source",
+      "status": "PASS"
+    },
+    {
+      "name": "Applied raster and provenance are saved before returning to the editor",
+      "status": "PASS"
+    },
+    {
+      "name": "Saved AI photo restores after restart with the plugin disabled",
+      "status": "PASS"
+    }
+  ],
+  "errors": []
+}

@@ -27,6 +27,13 @@ import { processPhotoAsync } from '../lib/photoProcessing.js'
 import { exportName, uniqueExportName } from '../lib/exportNames.js'
 import { useUiStore } from './ui.js'
 
+function pluginExtensions(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const serialized = JSON.stringify(value)
+  if (serialized.length > 512000) throw new Error('Plugin metadata is too large.')
+  return JSON.parse(serialized)
+}
+
 /** Kantenlaenge, mit der das aktive Bild fuer die Ansicht dekodiert wird. */
 const VIEW_MAX_SIZE = 2600
 const HISTORY_LIMIT = 30
@@ -684,17 +691,18 @@ export const useLibraryStore = defineStore('library', () => {
   // --- Export ------------------------------------------------------------
   function hasSavedEdits(item) {
     const entry = history.get(item.id)
-    return hasEdits(item.edits) || Boolean(entry?.undo.length || entry?.redo.length)
+    return hasEdits(item.edits) || Boolean(entry?.undo.length || entry?.redo.length) || Boolean(Object.keys(item.extensions || {}).length)
   }
   function draftState(id) {
     const item = items.value.find(entry => entry.id === id)
     if (!item) return null
     const entry = history.get(id)
-    return { edits: JSON.parse(JSON.stringify(item.edits)), history: entry ? { undo: [...entry.undo], redo: [...entry.redo], committed: entry.committed } : null }
+    return { edits: JSON.parse(JSON.stringify(item.edits)), history: entry ? { undo: [...entry.undo], redo: [...entry.redo], committed: entry.committed } : null, extensions: pluginExtensions(item.extensions) }
   }
   async function restoreDraft(draft) {
     if (!draft.state?.edits || typeof draft.state.edits !== 'object') throw new Error('Project has no valid photo settings.')
     const restoredEdits = createEdits(draft.state.edits)
+    const restoredExtensions = pluginExtensions(draft.state.extensions)
     const prior = draft.state.history
     const sanitize = values => (Array.isArray(values) ? values : []).slice(-HISTORY_LIMIT).map(value => JSON.stringify(createEdits(JSON.parse(value))))
     const restoredHistory = { undo: sanitize(prior?.undo), redo: sanitize(prior?.redo), committed: JSON.stringify(restoredEdits) }
@@ -709,6 +717,7 @@ export const useLibraryStore = defineStore('library', () => {
     clearTimeout(historyTimers.get(item.id))
     item.draftId = draft.id
     item.edits = restoredEdits
+    item.extensions = restoredExtensions
     history.set(item.id, restoredHistory)
     await select(item.id)
     scheduleRender()
@@ -735,6 +744,31 @@ export const useLibraryStore = defineStore('library', () => {
     const result = await processPhotoAsync(canvas, edits, {}, signal)
     if (watermarkSnapshot.enabled) applyWatermark(result, watermarkSnapshot)
     return result
+  }
+
+  async function capturePluginPhoto(signal) {
+    const item = activeItem.value
+    if (!item) throw new Error('Open a photo first.')
+    const geometry = previewGeometry(item.width, item.height, item.edits)
+    if (item.width * item.height > 24000000 || geometry.width * geometry.height > 24000000) throw new Error('Local AI currently supports photos up to 24 megapixels. Export a smaller copy first.')
+    const edits = JSON.parse(JSON.stringify(item.edits))
+    const snapshot = { id: item.id, draftId: item.draftId, file: item.file, name: item.name, edits,
+      metadata: JSON.parse(JSON.stringify(item.metadata || {})), metadataOptions: { ...metadataOptions.value },
+      revision: JSON.stringify(item.edits) }
+    snapshot.canvas = await renderItemFullSize({ ...item, edits }, { resize: { mode: 'none' } }, { enabled: false }, signal)
+    signal?.throwIfAborted()
+    if (!isPluginSnapshotCurrent(snapshot)) throw new Error('The source changed while preparing the workspace.')
+    return snapshot
+  }
+  function isPluginSnapshotCurrent(snapshot) {
+    const item = items.value.find(entry => entry.id === snapshot.id)
+    return Boolean(item && item.file === snapshot.file && item.draftId === snapshot.draftId && JSON.stringify(item.edits) === snapshot.revision)
+  }
+  function assertCanAddPluginFile(file) {
+    if (!(file instanceof File) || file.size > 128 * 1024 ** 2) throw new Error('Generated photo exceeds the 128 MiB file limit.')
+    if (items.value.length >= 1000) throw new Error('The collection is full. Make room for a new photo first.')
+    const retained = items.value.filter(item => !item.file.desktopId).reduce((sum, item) => sum + item.file.size, 0)
+    if (retained + file.size > 512 * 1024 ** 2) throw new Error('The collection cannot retain another generated photo within its 512 MiB memory budget.')
   }
 
   async function saveActiveAsImpl(format = 'png', quality = 92) {
@@ -836,6 +870,7 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   return {
+    capturePluginPhoto, isPluginSnapshotCurrent, assertCanAddPluginFile, freshPhotoEdits: createEdits,
     draftState, restoreDraft, hasSavedEdits, clippingWarning,
     // State
     exportBusy,

@@ -1,11 +1,12 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import { usePluginStore } from './plugins.js'
 
 /** Gemeinsamer Zustand aller Arbeitsbereiche: aktiver Modus und Hinweise. */
 export const useUiStore = defineStore('ui', () => {
   // Jeder Start beginnt im Betrachter - die App ist zuerst ein Bildbetrachter,
   // die Bearbeitung holt man sich ueber "Edit" bzw. "Logo Creator" dazu.
-  const mode = ref('view') // view | images | logo
+  const mode = ref('view') // view | images | logo | ai-studio
   const notice = ref(null) // { type: 'info' | 'error' | 'success', message }
 
   // Beide Seitenpanele lassen sich einklappen - dann gehoert die Flaeche dem Bild.
@@ -18,6 +19,10 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function setMode(next) {
+    if (!['view', 'images', 'logo', 'ai-studio'].includes(next)) return
+    if (next === 'ai-studio' && !usePluginStore().studioEnabled) {
+      setNotice('info', 'Enable AI Studio in Images → Plugins first.'); return
+    }
     mode.value = next
   }
 

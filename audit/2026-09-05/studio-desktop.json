@@ -1,0 +1,40 @@
+{
+  "results": [
+    {
+      "name": "Real BiRefNet opens Subject Studio offline with all five workspaces",
+      "status": "PASS"
+    },
+    {
+      "name": "Selective presets and rapid slider changes render, undo and redo without new inference",
+      "status": "PASS"
+    },
+    {
+      "name": "Local background picker, fit and gradient use native authorized files",
+      "status": "PASS"
+    },
+    {
+      "name": "Product, sticker, opacity and subject crop produce matching preview geometry",
+      "status": "PASS"
+    },
+    {
+      "name": "Mask PNG and SDXL ZIP export matching full source dimensions and polarity, without composition",
+      "status": "PASS"
+    },
+    {
+      "name": "Product variant saves full geometry and style provenance while retaining the original",
+      "status": "PASS"
+    },
+    {
+      "name": "Subject mask hands off to LaMa, protects core actions and remains clearable/restorable",
+      "status": "PASS"
+    },
+    {
+      "name": "Real LaMa processes the transferred subject offline and saves its mask provenance",
+      "status": "PASS",
+      "detail": {
+        "elapsedMs": 22201
+      }
+    }
+  ],
+  "errors": []
+}

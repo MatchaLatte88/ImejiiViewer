@@ -1,6 +1,7 @@
 import { onBeforeUnmount, onMounted } from 'vue'
 import { useLibraryStore } from '../stores/library.js'
 import { isDesktop } from '../lib/desktop.js'
+import { pluginActivity } from '../plugins/host.js'
 
 function isTypingTarget(target) {
   return target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
@@ -16,6 +17,7 @@ export function usePhotoShortcuts(viewerRef, { editing = false } = {}) {
   const store = useLibraryStore()
 
   function onKeyDown(event) {
+    if (pluginActivity.active) return
     // Auf dem Desktop laufen Strg-Kuerzel ueber das Anwendungsmenue.
     const meta = event.ctrlKey || event.metaKey
     if (isTypingTarget(event.target)) return
