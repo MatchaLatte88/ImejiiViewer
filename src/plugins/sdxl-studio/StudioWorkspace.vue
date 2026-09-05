@@ -38,6 +38,10 @@ const sizeValue = computed({
   get: () => studio.document ? studio.document.parameters.width + 'x' + studio.document.parameters.height : '1024x1024',
   set: value => { if (studio.document) { const [width, height] = value.split('x').map(Number); studio.document.parameters.width = width; studio.document.parameters.height = height } },
 })
+const randomizeSeed = computed({
+  get: () => studio.document?.parameters?.randomizeSeed !== false,
+  set: value => { if (studio.document) studio.document.parameters.randomizeSeed = value },
+})
 const modelOptions = computed(() => studio.connection?.models?.length ? studio.connection.models : studio.document?.parameters?.model ? [studio.document.parameters.model] : [])
 const modelDisplay = model => model === 'sd_xl_base_1.0.safetensors' ? 'SDXL Base 1.0 · official filename' : model
 const testLabel = computed(() => 'Test local ' + operationCopy.value.title.toLowerCase())
@@ -98,7 +102,6 @@ function keydown(event) {
 }
 const keyup = event => { if (event.code === 'Space') studio.compare = false }
 const blur = () => { studio.compare = false; finish() }
-function randomSeed() { studio.document.parameters.seed = crypto.getRandomValues(new Uint32Array(1))[0] }
 function refreshThumbnails() {
   for (const thumbnail of thumbnails.value) URL.revokeObjectURL(thumbnail.url)
   thumbnails.value = (studio.document?.results || []).map(result => ({ ...result, url: studio.resultURL(result) }))
@@ -226,7 +229,7 @@ onBeforeUnmount(() => {
           <label class="field">Negative prompt <span class="optional">optional</span><textarea v-model="studio.document.parameters.negative" maxlength="4000" rows="2" placeholder="Blurry, distorted, text…" /></label>
           <div class="model-label"><label class="field">SDXL checkpoint<select v-model="studio.document.parameters.model" :disabled="studio.busy || !studio.connection?.modelAvailable"><option v-for="model in modelOptions" :key="model" :value="model">{{ modelDisplay(model) }}</option></select></label><small>From ComfyUI/models/checkpoints · {{ operationCopy.title }} uses a pinned local workflow. Reconnect after adding a model.</small></div>
           <p v-if="studio.operation !== 'text-to-image'" class="small">Full replacement strength is fixed at 1.0 so the neutral masked latent cannot remain as a gray patch.</p>
-          <details class="advanced"><summary>Advanced settings</summary><label class="field">Seed<input v-model.number="studio.document.parameters.seed" type="number" min="0" max="4294967295" step="1"></label><button type="button" class="random-seed" @click="randomSeed">New random seed</button><SliderControl v-model="studio.document.parameters.steps" label="Steps" :min="1" :max="50" /><SliderControl v-model="studio.document.parameters.cfg" label="Prompt guidance" :min="1" :max="15" :step=".5" /><p class="small">DPM++ 2M SDE · Karras<br>Scene-aware context crop with edge padding. Alpha is preserved.</p></details>
+          <details class="advanced"><summary>Advanced settings</summary><label class="seed-mode"><input v-model="randomizeSeed" type="checkbox" :disabled="studio.busy"> New random seed for every variant</label><label class="field">{{ randomizeSeed ? 'Last used seed' : 'Fixed seed' }}<input v-model.number="studio.document.parameters.seed" type="number" min="0" max="4294967295" step="1" :disabled="randomizeSeed || studio.busy"></label><button v-if="!randomizeSeed" type="button" class="random-seed" :disabled="studio.busy" @click="studio.randomSeed">New random seed</button><SliderControl v-model="studio.document.parameters.steps" label="Steps" :min="1" :max="50" /><SliderControl v-model="studio.document.parameters.cfg" label="Prompt guidance" :min="1" :max="15" :step=".5" /><p class="small">DPM++ 2M SDE · Karras<br>Scene-aware context crop with edge padding. Alpha is preserved.</p></details>
         </template>
         <p v-else class="small">{{ studio.operation === 'text-to-image' ? 'Choose Text again to create a new prompt session.' : 'Open a source image to begin.' }}</p>
       </fieldset>
@@ -288,7 +291,7 @@ textarea, input[type=number], select { display: block; width: 100%; margin-top: 
 .outpaint-grid label { font-size: 10px; color: var(--text-muted); }
 .outpaint-grid input { margin-top: 4px; padding: 7px; }
 .model-label { display: grid; gap: 7px; border-block: 1px solid var(--border); padding: 13px 0; } .model-label > span { font: 9px var(--font-mono); color: var(--text-subtle); letter-spacing: .1em; } .model-label strong { font-size: 12px; font-weight: 500; } .model-label small { font-size: 10px; color: var(--text-subtle); }
-.advanced { font-size: 11px; color: var(--text-muted); } summary { cursor: pointer; margin-bottom: 15px; } .advanced .slider { margin-top: 18px; } .random-seed { margin-top: 6px; padding: 0; background: none; border: 0; color: var(--accent-text); font-size: 10px; } .advanced p { margin-top: 14px; }
+.advanced { font-size: 11px; color: var(--text-muted); } summary { cursor: pointer; margin-bottom: 15px; } .advanced .slider { margin-top: 18px; } .seed-mode { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; cursor: pointer; } .seed-mode input { accent-color: var(--accent); } .random-seed { margin-top: 6px; padding: 0; background: none; border: 0; color: var(--accent-text); font-size: 10px; } .advanced p { margin-top: 14px; }
 .run-actions { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding-top: 10px; } .error { color: var(--danger); font-size: 11px; overflow-wrap: anywhere; }
 button:focus-visible, textarea:focus-visible, input:focus-visible, canvas:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; } button:disabled { opacity: .4; cursor: default; }
 @media (max-width: 1200px) { .ai-studio { grid-template-columns: 168px minmax(0, 1fr) 260px; } .tools, .parameters { padding: 16px 12px; } .empty .eyebrow { max-width: 180px; line-height: 1.7; } .save-status { display: none; } }

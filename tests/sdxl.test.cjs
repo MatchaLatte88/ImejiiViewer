@@ -41,7 +41,7 @@ async function fixture(t, options = {}) {
   return { port: server.address().port, calls, jobs, ready: () => { ready = true } }
 }
 test('SDXL parameters, buffers and fixed workflow reject free model/path/operation inputs', () => {
-  for (const change of [{ model: '../model' }, { prompt: '' }, { steps: 51 }, { seed: -1 }, { cfg: NaN }, { denoise: .8 }]) assert.throws(() => parameters({ ...params, ...change }))
+  for (const change of [{ model: '../model' }, { prompt: '' }, { steps: 51 }, { seed: -1 }, { randomizeSeed: 'yes' }, { cfg: NaN }, { denoise: .8 }]) assert.throws(() => parameters({ ...params, ...change }))
   assert.throws(() => png(new Uint8Array(12))); assert.throws(() => png({ byteLength: 33 }))
   const graph = workflow('inpaint', params, 'own-image.png', 'own-mask.png', 'own-output')
   assert.equal(graph['5'].inputs.channel, 'red'); assert.equal(graph['6'].inputs.grow_mask_by, 6)

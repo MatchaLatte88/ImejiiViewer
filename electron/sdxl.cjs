@@ -50,7 +50,7 @@ function size(width, height) {
 }
 function parameters(p, selectedOperation = 'inpaint', allowedModels = [MODEL]) {
   selectedOperation = operation(selectedOperation)
-  if (!p || typeof p.prompt !== 'string' || !p.prompt.trim() || p.prompt.length > 4000 || typeof p.negative !== 'string' || p.negative.length > 4000 || !Number.isSafeInteger(p.seed) || p.seed < 0 || p.seed > 4294967295 || !Number.isInteger(p.steps) || p.steps < 1 || p.steps > 50 || !Number.isFinite(p.cfg) || p.cfg < 1 || p.cfg > 15 || p.denoise !== 1) throw new Error('Invalid SDXL parameters. This workflow requires full denoising.')
+  if (!p || typeof p.prompt !== 'string' || !p.prompt.trim() || p.prompt.length > 4000 || typeof p.negative !== 'string' || p.negative.length > 4000 || !Number.isSafeInteger(p.seed) || p.seed < 0 || p.seed > 4294967295 || p.randomizeSeed !== undefined && typeof p.randomizeSeed !== 'boolean' || !Number.isInteger(p.steps) || p.steps < 1 || p.steps > 50 || !Number.isFinite(p.cfg) || p.cfg < 1 || p.cfg > 15 || p.denoise !== 1) throw new Error('Invalid SDXL parameters. This workflow requires full denoising.')
   const model = checkpoint(p.model)
   if (!Array.isArray(allowedModels) || !allowedModels.includes(model)) throw new Error('Choose a checkpoint reported by this ComfyUI connection.')
   const result = { prompt: p.prompt, negative: p.negative, model, seed: p.seed, steps: p.steps, cfg: p.cfg, denoise: p.denoise }

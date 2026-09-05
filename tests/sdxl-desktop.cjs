@@ -78,7 +78,7 @@ app.whenReady().then(async () => {
       const x = Math.round(rect.x + rect.width * .5), y = Math.round(rect.y + rect.height * .6)
       wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 }); wc.sendInputEvent({ type: 'mouseMove', x: x + 50, y }); wc.sendInputEvent({ type: 'mouseUp', x: x + 50, y, button: 'left', clickCount: 1 })
       await until(() => js('studio.document.strokes.length === 1'))
-      await js("studio.document.parameters.prompt='A small ceramic planter with a green fern, soft natural light'; studio.document.parameters.seed=2026; studio.flush()")
+      await js("studio.document.parameters.prompt='A small ceramic planter with a green fern, soft natural light'; studio.document.parameters.seed=2026; studio.document.parameters.randomizeSeed=false; studio.flush()")
       wc.send('menu:action', 'undo'); await until(() => js('studio.document.strokes.length === 0'))
       wc.send('menu:action', 'redo'); await until(() => js('studio.document.strokes.length === 1'))
       wc.send('menu:action', 'mode:logo'); await until(() => js("ui.mode === 'logo'"))

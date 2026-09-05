@@ -1,4 +1,4 @@
-# AI Studio · SDXL v0.4
+# AI Studio · SDXL v0.5
 
 Stand: 5. September 2026. Text-to-Image, Inpainting und Outpainting besitzen getrennte lokale Workflow-Verträge; **reale SDXL-Modellabnahme und die verwaltete ComfyUI-Runtime sind noch offen**.
 
@@ -11,8 +11,9 @@ Stand: 5. September 2026. Text-to-Image, Inpainting und Outpainting besitzen get
 5. Für Inpainting ein Bild öffnen, eine Auswahl malen (`B`), radieren (`E`) oder eine deckende Graustufen-PNG importieren. Weiß wird neu gemalt, Schwarz bleibt erhalten.
 6. Für Outpainting ein Bild öffnen und die Erweiterung links, rechts, oben und unten sowie den Überlappungsbereich festlegen. Imejii erstellt daraus eine größere Arbeitsfläche und eine weiche Randmaske; der geschützte Innenbereich bleibt bei der Rückprojektion unverändert.
 7. Eigene lokale ComfyUI-Installation starten. In AI Studio den Port unter **Connect local ComfyUI** einstellen und **Connect & check** wählen. Nur `127.0.0.1` ist erlaubt. Danach einen der von ComfyUI gemeldeten SDXL-Checkpoints auswählen. Die spätere verwaltete Hintergrund-Runtime ersetzt diesen manuellen Einrichtungsschritt.
-8. Der erste Lauf jeder Checkpoint-/Workflow-Kombination ist als lokaler Test gekennzeichnet. Eine erfolgreiche Rückgabe prüft den technischen Ablauf, keine allgemeine Bildqualität oder Hardwarefreigabe.
-9. Ergebnis prüfen und **Keep & open in Images** wählen. Quellbilder werden nicht überschrieben.
+8. **Generate variant** verwendet standardmäßig bei jedem Klick einen neuen zufälligen Seed. Unter **Advanced settings** lässt sich das abschalten und ein fester Seed für reproduzierbare Ergebnisse eingeben. **Last used seed** zeigt den Seed der zuletzt gestarteten Variante.
+9. Der erste Lauf jeder Checkpoint-/Workflow-Kombination ist als lokaler Test gekennzeichnet. Eine erfolgreiche Rückgabe prüft den technischen Ablauf, keine allgemeine Bildqualität oder Hardwarefreigabe.
+10. Ergebnis prüfen und **Keep & open in Images** wählen. Quellbilder werden nicht überschrieben.
 
 Der Adapter liest bis zu 256 relative `.safetensors`-Checkpointnamen aus dem ComfyUI-Standard-Node `CheckpointLoaderSimple`. `sd_xl_base_1.0.safetensors` bleibt die Vorauswahl, sofern vorhanden; andernfalls wird der erste sichere Eintrag gewählt. Unterordner wie `community\mein-modell.safetensors` werden unterstützt. Absolute Pfade, Traversal, Modell-URLs, `.ckpt`-Dateien und frei vom Renderer übermittelte Namen werden abgewiesen. Neue Dateien unter `ComfyUI/models/checkpoints` erscheinen nach erneutem Verbinden.
 
@@ -67,7 +68,7 @@ Der Standard-Node `LoadImageMask` liest bei `red` die Graustufe direkt. Sein Alp
 
 IndexedDB `imejii-workbench` Version 2 ergänzt `artifacts`. Die bestehenden `sources` und `drafts` bleiben erhalten. Studio-Einträge verwenden `kind: studio`; reine Bildartefakte werden per SHA-256 adressiert. Quellen, Basismasken, unveränderliche Jobmasken und Ergebnisbilder liegen als PNG-Blobs vor. Striche/Redo, Prompts, Parameter, Herkunft, Jobstatus und Übernahmestatus liegen im versionierten Rezept.
 
-Ein Job bindet Operation, Dokument-ID, Revision, Parameter-Snapshot mit exaktem Checkpointnamen und, soweit vorhanden, Quell-/Maskenhash. Ein Ergebnis speichert außerdem Ausgabemaße, Provider-Version, Modellname, Workflow-ID, Hash des konkret gesendeten Graphs, Backend-Job-ID, Crop/Padding und Zeitstempel. Outpainting speichert zusätzlich Erweiterung, Überlappung und Quellplatzierung. Der Graph-Hash enthält Eingaben und ist kein Hash einer installierten Runtime. Beim Neustart werden nicht abgeschlossene Jobs als unterbrochen markiert; es wird keine Inferenz fortgesetzt.
+Ein Job bindet Operation, Dokument-ID, Revision, Parameter-Snapshot mit exaktem Checkpointnamen und dem tatsächlich verwendeten Seed sowie, soweit vorhanden, Quell-/Maskenhash. Ein Ergebnis speichert außerdem Ausgabemaße, Provider-Version, Modellname, Workflow-ID, Hash des konkret gesendeten Graphs, Backend-Job-ID, Crop/Padding und Zeitstempel. Outpainting speichert zusätzlich Erweiterung, Überlappung und Quellplatzierung. Der Graph-Hash enthält Eingaben und ist kein Hash einer installierten Runtime. Beim Neustart werden nicht abgeschlossene Jobs als unterbrochen markiert; es wird keine Inferenz fortgesetzt.
 
 Grenzen: gemeinsam 100 Saved-work-Einträge / 2 GiB Quelldaten plus Artefakte, je Studio-Sitzung 384 MiB, je Blob 128 MiB, 8 Ergebnisvarianten, 20 Jobs und 2 MiB Rezept. Maskenstriche: 120 / insgesamt 24.000 Punkte. Unreferenzierte Artefakte werden bei Aktualisierung/Löschung entfernt, gemeinsam referenzierte bleiben erhalten. Speicherfehler lassen die letzte erfolgreiche Speicherung intakt und den aktuellen Stand mit Fehlermeldung offen.
 

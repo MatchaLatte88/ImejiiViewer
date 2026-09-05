@@ -88,6 +88,8 @@ export async function sdxlChecks(check) {
     assert(imported.state.id !== entry.state.id && imported.artifacts.size === 2, 'import reused session identity')
     const restored = fresh(); await restored.restore(entry)
     assert(restored.document.parameters.prompt === 'A quiet garden' && restored.canRedo, 'session not restored')
+    const legacy = structuredClone(entry.state); delete legacy.parameters.randomizeSeed
+    assert(interruptedDocument(legacy).parameters.randomizeSeed === true, 'legacy session did not enable per-variant seeds')
     restored.redo(); await restored.flush(); assert(bytes(restored.mask()).every((n, i) => i % 4 !== 3 || !n), 'redo changed after restart')
     const damaged = new Uint8Array(await project.arrayBuffer()); damaged[damaged.length - 1] ^= 1
     await expectError(() => readProject(new Blob([damaged])))
@@ -119,9 +121,30 @@ export async function sdxlChecks(check) {
     assert((await loadDraft('studio:' + store.document.id)).state.parameters.model === model, 'community checkpoint was not persisted')
     await deleteDraft('studio:' + store.document.id)
   })
+  await check('Studio uses a new seed for every variant by default and can keep a fixed seed', async () => {
+    const store = fresh(); await store.setOperation('text-to-image')
+    store.document.parameters.prompt = 'A lantern beside a forest path'
+    const generated = createCanvas(1024, 1024); generated.getContext('2d').fillRect(0, 0, 1024, 1024)
+    const output = new Uint8Array(await (await canvasToBlob(generated, 'png')).arrayBuffer()), nativeApi = window.desktopApi, seeds = []
+    window.desktopApi = { onAiStudioProgress: () => () => {}, aiStudioRun: async payload => {
+      seeds.push(payload.parameters.seed)
+      return { bytes: output, provider: 'TEST FIXTURE', providerVersion: 'test', model: payload.parameters.model, operation: payload.operation, workflow: 'seed-test-only', validatedPairs: [{ model: payload.parameters.model, operation: payload.operation }], modelSha256: null, elapsedMs: 0 }
+    } }
+    try {
+      store.connection = { modelAvailable: true, models: [store.document.parameters.model], defaultModel: store.document.parameters.model, validatedPairs: [] }
+      assert(store.document.parameters.randomizeSeed === true, 'new sessions did not default to random seeds')
+      await store.run(true); await store.run()
+      assert(seeds.length === 2 && seeds[0] !== seeds[1], 'two variants reused the same automatic seed')
+      assert(store.document.results[0].provenance.parameters.seed === seeds[0] && store.document.results[1].provenance.parameters.seed === seeds[1], 'automatic seeds were not recorded in provenance')
+      store.document.parameters.randomizeSeed = false; store.document.parameters.seed = 123456
+      await store.run(); await store.run()
+      assert(seeds[2] === 123456 && seeds[3] === 123456, 'fixed seed changed between variants')
+      await deleteDraft('studio:' + store.document.id)
+    } finally { window.desktopApi = nativeApi }
+  })
   await check('SDXL text-to-image creates a source-free durable variant with its own workflow contract', async () => {
     const store = fresh(); await store.setOperation('text-to-image')
-    store.document.parameters.prompt = 'A quiet lake under a violet sky'; store.document.parameters.seed = 77
+    store.document.parameters.prompt = 'A quiet lake under a violet sky'; store.document.parameters.seed = 77; store.document.parameters.randomizeSeed = false
     const generated = createCanvas(1024, 1024); generated.getContext('2d').fillStyle = '#6c62a8'; generated.getContext('2d').fillRect(0, 0, 1024, 1024)
     const output = new Uint8Array(await (await canvasToBlob(generated, 'png')).arrayBuffer()), nativeApi = window.desktopApi
     let submitted
@@ -162,7 +185,7 @@ export async function sdxlChecks(check) {
   })
   await check('Studio fixture result uses immutable prompt/seed, explicit acceptance, durable provenance and inpaint EXIF', async () => {
     const store = fresh(), s = source(), m = createCanvas(256, 128); m.getContext('2d').fillRect(100, 40, 40, 40)
-    await store.newSource(s, 'fixture.png', m); store.document.parameters.prompt = 'A vase'; store.document.parameters.seed = 1234
+    await store.newSource(s, 'fixture.png', m); store.document.parameters.prompt = 'A vase'; store.document.parameters.seed = 1234; store.document.parameters.randomizeSeed = false
     const generated = createCanvas(1024, 1024); generated.getContext('2d').fillStyle = '#ddccbb'; generated.getContext('2d').fillRect(0, 0, 1024, 1024)
     const resultBytes = new Uint8Array(await (await canvasToBlob(generated, 'png')).arrayBuffer()), nativeApi = window.desktopApi
     let submitted

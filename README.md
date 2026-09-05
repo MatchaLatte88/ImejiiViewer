@@ -305,7 +305,9 @@ Workflows, Maskenpinsel, Randverlängerung, Varianten, lokale Sitzungen und dire
 lassen sich aus der von ComfyUI gemeldeten Modellliste auswählen; jede Kombination aus
 Modell und Workflow erhält einen eigenen Testlauf. Inpainting sendet einen szenenbewussten
 Kontextausschnitt und verwendet vollständiges Denoising, damit die neutrale Maskenfüllung
-nicht als graue Fläche im Ergebnis bleibt. Originale bleiben erhalten. Der erste Adapter verbindet
+nicht als graue Fläche im Ergebnis bleibt. Jede Variante erhält standardmäßig einen neuen
+zufälligen Seed; ein fester Seed kann für reproduzierbare Ergebnisse aktiviert werden.
+Originale bleiben erhalten. Der erste Adapter verbindet
 eine selbst gestartete ComfyUI auf `127.0.0.1`; Runtime und SDXL-Gewichte werden nicht
 mitgeliefert oder automatisch geladen. Eine später verwaltete Runtime soll ComfyUI im
 normalen Betrieb unsichtbar starten und beenden.

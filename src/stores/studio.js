@@ -35,6 +35,14 @@ export const useStudioStore = defineStore('studio', () => {
     if (connection.value?.modelAvailable && !connection.value.models.includes(parameters.model)) parameters.model = connection.value.defaultModel
     return parameters
   }
+  function nextSeed(previous = -1) {
+    const seed = crypto.getRandomValues(new Uint32Array(1))[0]
+    return seed === previous ? (seed + 1) >>> 0 : seed
+  }
+  function randomSeed() {
+    if (!document.value || busy.value) return
+    document.value.parameters.seed = nextSeed(document.value.parameters.seed)
+  }
   function touch() {
     if (!document.value || mutating) return
     document.value.revision++; saveState.value = 'pending'; clearTimeout(timer)
@@ -193,6 +201,10 @@ export const useStudioStore = defineStore('studio', () => {
     const p = normalizeParameters(JSON.parse(JSON.stringify(doc.parameters)))
     validateParameters(p)
     if (!p.prompt.trim()) throw new Error(selectedOperation === 'text-to-image' ? 'Describe the image to generate.' : selectedOperation === 'outpaint' ? 'Describe what should continue beyond the image.' : 'Describe what should appear in the selected area.')
+    if (p.randomizeSeed) {
+      p.seed = nextSeed(p.seed)
+      doc.parameters.seed = p.seed
+    }
     const releaseAI = claimAI('SDXL ' + selectedOperation)
     working.value = true; error.value = ''; selected.value = null
     const revision = doc.revision
@@ -229,7 +241,7 @@ export const useStudioStore = defineStore('studio', () => {
       const canvas = selectedOperation === 'text-to-image' ? copyCanvas(generated) : composeInpaint(inputSource, inputMask, generated, prepared.geometry)
       const hash = await artifact(canvas)
       if (job.state === 'canceled' || document.value.id !== doc.id) return
-      const provenance = { operation: selectedOperation, version: '0.4.0', documentId: doc.id, revision, jobId: id, sourceSha256: doc.source || null, sourceName: doc.source ? doc.name : null, maskSha256,
+      const provenance = { operation: selectedOperation, version: '0.5.0', documentId: doc.id, revision, jobId: id, sourceSha256: doc.source || null, sourceName: doc.source ? doc.name : null, maskSha256,
         outputWidth: canvas.width, outputHeight: canvas.height, geometry: prepared?.geometry || null, outpaint: prepared?.settings || null, placement: prepared?.placement || null,
         parameters: p, provider: result.provider, providerVersion: result.providerVersion, model: result.model, modelSha256: result.modelSha256,
         workflow: result.workflow, workflowSha256: result.workflowSha256, backendJobId: result.backendJobId, elapsedMs: result.elapsedMs, createdAt: new Date().toISOString() }
@@ -301,6 +313,6 @@ export const useStudioStore = defineStore('studio', () => {
     return saveBlob(await studioProjectBlob(JSON.parse(JSON.stringify(document.value)), new Map(artifacts)), slugify(document.value.name) + '-studio.imejii')
   }
   return { document, source, baseMask, selected, selectedResult, compare, busy, pendingBackend, drawing, saveState, dirty, error, connection, connecting, port, currentJob, operation,
-    hasSource, hasDocument, hasInput, validationRequired, canUndo, canRedo, mask, addStroke, undo, redo, clearMask, flush, newTextDocument, setOperation, newSource, openFile, importMask, restore, initialize, connect, deactivate, run, cancel,
+    hasSource, hasDocument, hasInput, validationRequired, canUndo, canRedo, mask, addStroke, undo, redo, clearMask, randomSeed, flush, newTextDocument, setOperation, newSource, openFile, importMask, restore, initialize, connect, deactivate, run, cancel,
     resultCanvas, resultURL, exportResult, acceptResult, removeResult, exportProject }
 })
