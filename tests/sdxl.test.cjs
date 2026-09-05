@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const http = require('node:http')
 const { randomUUID } = require('node:crypto')
-const { createSdxlService, workflow, parameters, png, request, checkpoint, modelList, MODEL, WORKFLOWS, SDXL_SIZES, NODE_INPUTS } = require('../electron/sdxl.cjs')
+const { createSdxlService, workflow, parameters, conditionPrompts, png, request, checkpoint, modelList, MODEL, REFINER, WORKFLOWS, SDXL_SIZES, NODE_INPUTS } = require('../electron/sdxl.cjs')
 const COMMUNITY = 'community\\dream-xl.safetensors'
 // Protocol fixtures only: this suite does not claim to execute an SDXL model.
 const image = Buffer.alloc(33)
@@ -22,7 +22,7 @@ async function fixture(t, options = {}) {
         const name = req.url.split('/').pop(), required = Object.fromEntries(NODE_INPUTS[name].map(key => [key, ['STRING']]))
         if (name === 'CheckpointLoaderSimple') required.ckpt_name = [options.models || [MODEL]]
         if (name === 'LoadImageMask') required.channel = [['red', 'alpha']]
-        if (name === 'KSampler') { required.sampler_name = [['dpmpp_2m_sde']]; required.scheduler = [['karras']] }
+        if (name === 'KSampler' || name === 'KSamplerAdvanced') { required.sampler_name = [['dpmpp_2m_sde']]; required.scheduler = [['karras']] }
         return send({ [name]: { python_module: options.custom ? 'custom_nodes.untrusted' : 'nodes', input: { required } } })
       }
       if (req.url === '/upload/image') return send({ name: options.badUpload ? '../outside.png' : /filename="([^"]+)"/.exec(body.toString())?.[1], subfolder: '', type: 'input' })
@@ -41,7 +41,7 @@ async function fixture(t, options = {}) {
   return { port: server.address().port, calls, jobs, ready: () => { ready = true } }
 }
 test('SDXL parameters, buffers and fixed workflow reject free model/path/operation inputs', () => {
-  for (const change of [{ model: '../model' }, { prompt: '' }, { steps: 51 }, { seed: -1 }, { randomizeSeed: 'yes' }, { cfg: NaN }, { denoise: .8 }]) assert.throws(() => parameters({ ...params, ...change }))
+  for (const change of [{ model: '../model' }, { prompt: '' }, { steps: 51 }, { seed: -1 }, { randomizeSeed: 'yes' }, { stylePreset: 'magic' }, { refinerEnabled: 'yes' }, { refiner: '../refiner.safetensors' }, { cfg: NaN }, { denoise: .8 }]) assert.throws(() => parameters({ ...params, ...change }))
   assert.throws(() => png(new Uint8Array(12))); assert.throws(() => png({ byteLength: 33 }))
   const graph = workflow('inpaint', params, 'own-image.png', 'own-mask.png', 'own-output')
   assert.equal(graph['5'].inputs.channel, 'red'); assert.equal(graph['6'].inputs.grow_mask_by, 6)
@@ -53,7 +53,13 @@ test('SDXL parameters, buffers and fixed workflow reject free model/path/operati
   assert.equal(parameters({ ...params, model: COMMUNITY }, 'inpaint', [MODEL, COMMUNITY]).model, COMMUNITY)
   assert.equal(checkpoint(COMMUNITY), COMMUNITY)
   assert.deepEqual(modelList([MODEL, COMMUNITY, COMMUNITY, '../escape.safetensors', 'legacy.ckpt']), [COMMUNITY, MODEL])
-  assert.equal(WORKFLOWS.outpaint, 'imejii-sdxl-base-outpaint-v2'); assert.equal(SDXL_SIZES.length, 9)
+  const refinedParameters = parameters({ ...params, refinerEnabled: true }, 'inpaint', [MODEL, REFINER])
+  const refined = workflow('inpaint', refinedParameters, 'own-image.png', 'own-mask.png', 'own-output')
+  assert.equal(refinedParameters.refiner, REFINER); assert.equal(refined['7'].class_type, 'KSamplerAdvanced')
+  assert.equal(refined['7'].inputs.end_at_step, 20); assert.equal(refined['13'].inputs.start_at_step, 20); assert.deepEqual(refined['8'].inputs.samples, ['13', 0])
+  assert.match(conditionPrompts(refinedParameters, 'inpaint').prompt, /matching ambient lighting/)
+  assert.equal(conditionPrompts({ ...refinedParameters, stylePreset: 'raw' }, 'inpaint').prompt, params.prompt)
+  assert.equal(WORKFLOWS.outpaint, 'imejii-sdxl-outpaint-v3'); assert.equal(SDXL_SIZES.length, 9)
 })
 test('SDXL refuses external addresses, invalid ports, impersonators and custom-node replacements', async t => {
   const service = createSdxlService()

@@ -5,8 +5,9 @@ export const ARTIFACT_LIMIT = 128 * 1024 ** 2
 export const HASH = /^[a-f0-9]{64}$/
 export const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value)
 export const STUDIO_OPERATIONS = Object.freeze(['text-to-image', 'inpaint', 'outpaint'])
+export const SDXL_STYLE_PRESETS = Object.freeze(['source-match', 'raw'])
 export const SDXL_SIZES = Object.freeze([[1024, 1024], [1152, 896], [896, 1152], [1216, 832], [832, 1216], [1344, 768], [768, 1344], [1536, 640], [640, 1536]])
-export const defaultParameters = () => ({ prompt: '', negative: '', seed: 0, randomizeSeed: true, steps: 30, cfg: 7, denoise: 1, model: 'sd_xl_base_1.0.safetensors', width: 1024, height: 1024,
+export const defaultParameters = () => ({ prompt: '', negative: '', stylePreset: 'source-match', seed: 0, randomizeSeed: true, steps: 30, cfg: 7, denoise: 1, model: 'sd_xl_base_1.0.safetensors', refinerEnabled: true, refiner: '', width: 1024, height: 1024,
   outpaint: { left: 256, right: 256, top: 0, bottom: 0, overlap: 64 } })
 export function validateCheckpointName(value) {
   if (typeof value !== 'string' || !value || value.length > 240 || [...value].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) || /^[a-z]:/i.test(value) || /^[\\/]/.test(value) || !value.toLowerCase().endsWith('.safetensors')) throw new Error('Choose a safe SDXL .safetensors checkpoint from ComfyUI.')
@@ -23,7 +24,9 @@ export function dimensions(width, height) {
 export function validateParameters(p) {
   if (!p || typeof p.prompt !== 'string' || p.prompt.length > 4000 || typeof p.negative !== 'string' || p.negative.length > 4000 || !Number.isSafeInteger(p.seed) || p.seed < 0 || p.seed > 4294967295 || !Number.isInteger(p.steps) || p.steps < 1 || p.steps > 50 || !Number.isFinite(p.cfg) || p.cfg < 1 || p.cfg > 15 || !Number.isFinite(p.denoise) || p.denoise < .1 || p.denoise > 1) throw new Error('Invalid SDXL parameters. Use 1–50 steps, CFG 1–15 and strength 0.1–1.')
   if (p.randomizeSeed !== undefined && typeof p.randomizeSeed !== 'boolean') throw new Error('Invalid SDXL seed mode.')
+  if (p.stylePreset !== undefined && !SDXL_STYLE_PRESETS.includes(p.stylePreset) || p.refinerEnabled !== undefined && typeof p.refinerEnabled !== 'boolean') throw new Error('Invalid SDXL quality settings.')
   validateCheckpointName(p.model)
+  if (p.refiner) validateCheckpointName(p.refiner)
   if (p.width !== undefined && !SDXL_SIZES.some(([width, height]) => p.width === width && p.height === height)) throw new Error('Unsupported SDXL output size.')
   if (p.outpaint !== undefined) {
     const keys = ['left', 'right', 'top', 'bottom']

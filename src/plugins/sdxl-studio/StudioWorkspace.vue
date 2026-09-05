@@ -42,7 +42,23 @@ const randomizeSeed = computed({
   get: () => studio.document?.parameters?.randomizeSeed !== false,
   set: value => { if (studio.document) studio.document.parameters.randomizeSeed = value },
 })
-const modelOptions = computed(() => studio.connection?.models?.length ? studio.connection.models : studio.document?.parameters?.model ? [studio.document.parameters.model] : [])
+const qualityPreset = computed({
+  get: () => studio.document?.parameters?.stylePreset || 'source-match',
+  set: value => { if (studio.document) studio.document.parameters.stylePreset = value },
+})
+const refinerEnabled = computed({
+  get: () => studio.document?.parameters?.refinerEnabled !== false,
+  set: value => { if (studio.document) studio.document.parameters.refinerEnabled = value },
+})
+const refinerSelection = computed({
+  get: () => studio.document?.parameters?.refiner || '',
+  set: value => { if (studio.document) studio.document.parameters.refiner = value },
+})
+const modelOptions = computed(() => {
+  const models = studio.connection?.models?.length ? studio.connection.models : studio.document?.parameters?.model ? [studio.document.parameters.model] : []
+  return models.filter(model => model !== studio.connection?.defaultRefiner || model === studio.document?.parameters?.model)
+})
+const refinerOptions = computed(() => (studio.connection?.models || []).filter(model => model !== studio.document?.parameters?.model))
 const modelDisplay = model => model === 'sd_xl_base_1.0.safetensors' ? 'SDXL Base 1.0 · official filename' : model
 const testLabel = computed(() => 'Test local ' + operationCopy.value.title.toLowerCase())
 async function act(fn) { studio.error = ''; try { await fn() } catch (error) { studio.error = error.message } }
@@ -228,6 +244,10 @@ onBeforeUnmount(() => {
           <label class="field">Prompt<textarea v-model="studio.document.parameters.prompt" maxlength="4000" rows="5" placeholder="A ceramic vase with wildflowers, soft window light, natural shadows…" /></label>
           <label class="field">Negative prompt <span class="optional">optional</span><textarea v-model="studio.document.parameters.negative" maxlength="4000" rows="2" placeholder="Blurry, distorted, text…" /></label>
           <div class="model-label"><label class="field">SDXL checkpoint<select v-model="studio.document.parameters.model" :disabled="studio.busy || !studio.connection?.modelAvailable"><option v-for="model in modelOptions" :key="model" :value="model">{{ modelDisplay(model) }}</option></select></label><small>From ComfyUI/models/checkpoints · {{ operationCopy.title }} uses a pinned local workflow. Reconnect after adding a model.</small></div>
+          <label class="field">Quality preset<select v-model="qualityPreset" :disabled="studio.busy"><option value="source-match">Match source · recommended</option><option value="raw">Raw prompt</option></select></label>
+          <div class="model-label"><label class="seed-mode"><input v-model="refinerEnabled" type="checkbox" :disabled="studio.busy"> Refine final details</label><label v-if="refinerEnabled" class="field">SDXL refiner<select v-model="refinerSelection" :disabled="studio.busy || !studio.connection?.modelAvailable"><option value="">{{ studio.connection?.defaultRefiner ? 'Automatic · ' + studio.connection.defaultRefiner : 'Automatic · none found' }}</option><option v-for="model in refinerOptions" :key="model" :value="model">{{ model }}</option></select></label><small v-if="refinerEnabled && studio.connection?.defaultRefiner">The last 20% of sampling uses the installed refiner.</small><small v-else-if="refinerEnabled">No official SDXL refiner was reported. Choose a compatible checkpoint or reconnect after adding one.</small></div>
+          <p v-if="studio.document.parameters.model === 'sd_xl_base_1.0.safetensors'" class="small">SDXL Base is a foundation checkpoint. The refiner improves detail; a tuned community SDXL checkpoint can improve shapes and style further.</p>
+          <p v-if="studio.operation === 'inpaint'" class="small">When adding an object, paint a loose silhouette around the intended object. A very large oval or rectangle asks SDXL to invent a complete sub-scene inside it.</p>
           <p v-if="studio.operation !== 'text-to-image'" class="small">Full replacement strength is fixed at 1.0 so the neutral masked latent cannot remain as a gray patch.</p>
           <details class="advanced"><summary>Advanced settings</summary><label class="seed-mode"><input v-model="randomizeSeed" type="checkbox" :disabled="studio.busy"> New random seed for every variant</label><label class="field">{{ randomizeSeed ? 'Last used seed' : 'Fixed seed' }}<input v-model.number="studio.document.parameters.seed" type="number" min="0" max="4294967295" step="1" :disabled="randomizeSeed || studio.busy"></label><button v-if="!randomizeSeed" type="button" class="random-seed" :disabled="studio.busy" @click="studio.randomSeed">New random seed</button><SliderControl v-model="studio.document.parameters.steps" label="Steps" :min="1" :max="50" /><SliderControl v-model="studio.document.parameters.cfg" label="Prompt guidance" :min="1" :max="15" :step=".5" /><p class="small">DPM++ 2M SDE · Karras<br>Scene-aware context crop with edge padding. Alpha is preserved.</p></details>
         </template>

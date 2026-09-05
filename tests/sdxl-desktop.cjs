@@ -25,7 +25,7 @@ const server = http.createServer(async (req, res) => {
       const name = req.url.split('/').pop(), required = Object.fromEntries(NODE_INPUTS[name].map(key => [key, ['STRING']]))
       if (name === 'CheckpointLoaderSimple') required.ckpt_name = [[MODEL]]
       if (name === 'LoadImageMask') required.channel = [['red', 'alpha']]
-      if (name === 'KSampler') { required.sampler_name = [['dpmpp_2m_sde']]; required.scheduler = [['karras']] }
+      if (name === 'KSampler' || name === 'KSamplerAdvanced') { required.sampler_name = [['dpmpp_2m_sde']]; required.scheduler = [['karras']] }
       return send({ [name]: { python_module: 'nodes', input: { required } } })
     }
     if (req.url === '/upload/image') {

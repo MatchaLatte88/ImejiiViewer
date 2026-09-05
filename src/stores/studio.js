@@ -21,9 +21,11 @@ export const useStudioStore = defineStore('studio', () => {
   const hasSource = computed(() => Boolean(source.value))
   const hasDocument = computed(() => Boolean(document.value))
   const hasInput = computed(() => operation.value === 'text-to-image' ? hasDocument.value : hasSource.value)
+  const resolvedRefiner = parameters => parameters?.refinerEnabled === false ? '' : parameters?.refiner || connection.value?.defaultRefiner || ''
   const validationRequired = computed(() => {
     const model = document.value?.parameters?.model
-    return Boolean(connection.value?.modelAvailable && model && !(connection.value.validatedPairs || []).some(pair => pair?.model === model && pair?.operation === operation.value))
+    const refiner = resolvedRefiner(document.value?.parameters)
+    return Boolean(connection.value?.modelAvailable && model && !(connection.value.validatedPairs || []).some(pair => pair?.model === model && (pair?.refiner || '') === refiner && pair?.operation === operation.value))
   })
   const canUndo = computed(() => operation.value === 'inpaint' && !busy.value && !drawing.value && Boolean(document.value?.strokes.length))
   const canRedo = computed(() => operation.value === 'inpaint' && !busy.value && !drawing.value && Boolean(document.value?.redo.length))
@@ -199,6 +201,8 @@ export const useStudioStore = defineStore('studio', () => {
     // neutral fill. Partial denoising would preserve that fill as a gray patch.
     if (doc.parameters.denoise !== 1) doc.parameters.denoise = 1
     const p = normalizeParameters(JSON.parse(JSON.stringify(doc.parameters)))
+    p.refiner = resolvedRefiner(p)
+    p.refinerEnabled = Boolean(p.refiner)
     validateParameters(p)
     if (!p.prompt.trim()) throw new Error(selectedOperation === 'text-to-image' ? 'Describe the image to generate.' : selectedOperation === 'outpaint' ? 'Describe what should continue beyond the image.' : 'Describe what should appear in the selected area.')
     if (p.randomizeSeed) {
@@ -241,13 +245,14 @@ export const useStudioStore = defineStore('studio', () => {
       const canvas = selectedOperation === 'text-to-image' ? copyCanvas(generated) : composeInpaint(inputSource, inputMask, generated, prepared.geometry)
       const hash = await artifact(canvas)
       if (job.state === 'canceled' || document.value.id !== doc.id) return
-      const provenance = { operation: selectedOperation, version: '0.5.0', documentId: doc.id, revision, jobId: id, sourceSha256: doc.source || null, sourceName: doc.source ? doc.name : null, maskSha256,
+      const provenance = { operation: selectedOperation, version: '0.6.0', documentId: doc.id, revision, jobId: id, sourceSha256: doc.source || null, sourceName: doc.source ? doc.name : null, maskSha256,
         outputWidth: canvas.width, outputHeight: canvas.height, geometry: prepared?.geometry || null, outpaint: prepared?.settings || null, placement: prepared?.placement || null,
         parameters: p, provider: result.provider, providerVersion: result.providerVersion, model: result.model, modelSha256: result.modelSha256,
+        refiner: result.refiner || null, conditioning: result.conditioning || { prompt: p.prompt, negative: p.negative, preset: p.stylePreset },
         workflow: result.workflow, workflowSha256: result.workflowSha256, backendJobId: result.backendJobId, elapsedMs: result.elapsedMs, createdAt: new Date().toISOString() }
       doc.results.push({ id, artifact: hash, accepted: false, provenance }); selected.value = id
       job.state = 'succeeded'; job.message = 'Variant ready. Review it before opening it in Images.'
-      const pair = { model: p.model, operation: selectedOperation }
+      const pair = { model: p.model, refiner: p.refiner || undefined, operation: selectedOperation }
       const validatedPairs = result.validatedPairs || [...(connection.value.validatedPairs || []), pair]
       connection.value = { ...connection.value, validationRequired: false, validatedPairs }
     } catch (problem) {

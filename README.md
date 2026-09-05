@@ -307,6 +307,9 @@ Modell und Workflow erhält einen eigenen Testlauf. Inpainting sendet einen szen
 Kontextausschnitt und verwendet vollständiges Denoising, damit die neutrale Maskenfüllung
 nicht als graue Fläche im Ergebnis bleibt. Jede Variante erhält standardmäßig einen neuen
 zufälligen Seed; ein fester Seed kann für reproduzierbare Ergebnisse aktiviert werden.
+Ein lokales **Match source**-Qualitätspreset stimmt Perspektive, Licht und Kanten auf die
+Quelle ab. Wenn ComfyUI den offiziellen SDXL Refiner meldet, verfeinert er automatisch
+die letzten 20 Prozent des Samplings; beide Optionen lassen sich abschalten.
 Originale bleiben erhalten. Der erste Adapter verbindet
 eine selbst gestartete ComfyUI auf `127.0.0.1`; Runtime und SDXL-Gewichte werden nicht
 mitgeliefert oder automatisch geladen. Eine später verwaltete Runtime soll ComfyUI im

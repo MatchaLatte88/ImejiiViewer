@@ -5,17 +5,20 @@ const { randomUUID, createHash } = require('node:crypto')
 const { requestId } = require('./cutout.cjs')
 
 const MODEL = 'sd_xl_base_1.0.safetensors'
+const REFINER = 'sd_xl_refiner_1.0.safetensors'
 const OPERATIONS = Object.freeze(['text-to-image', 'inpaint', 'outpaint'])
+const STYLE_PRESETS = Object.freeze(['source-match', 'raw'])
 const WORKFLOWS = Object.freeze({
-  'text-to-image': 'imejii-sdxl-base-text-to-image-v2',
-  inpaint: 'imejii-sdxl-base-masked-latent-v2',
-  outpaint: 'imejii-sdxl-base-outpaint-v2',
+  'text-to-image': 'imejii-sdxl-text-to-image-v3',
+  inpaint: 'imejii-sdxl-masked-latent-v3',
+  outpaint: 'imejii-sdxl-outpaint-v3',
 })
 const SDXL_SIZES = Object.freeze([[1024, 1024], [1152, 896], [896, 1152], [1216, 832], [832, 1216], [1344, 768], [768, 1344], [1536, 640], [640, 1536]])
 const NODE_INPUTS = {
   CheckpointLoaderSimple: ['ckpt_name'], CLIPTextEncode: ['text', 'clip'], EmptyLatentImage: ['width', 'height', 'batch_size'],
   LoadImage: ['image'], LoadImageMask: ['image', 'channel'], VAEEncodeForInpaint: ['pixels', 'vae', 'mask', 'grow_mask_by'],
   KSampler: ['model', 'seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'positive', 'negative', 'latent_image', 'denoise'],
+  KSamplerAdvanced: ['model', 'add_noise', 'noise_seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'positive', 'negative', 'latent_image', 'start_at_step', 'end_at_step', 'return_with_leftover_noise'],
   VAEDecode: ['samples', 'vae'], SaveImage: ['images', 'filename_prefix'],
 }
 const MAX_MODELS = 256
@@ -39,10 +42,10 @@ function modelList(values) {
   }
   return [...new Set(models)].sort((a, b) => a.localeCompare(b))
 }
-const validationKey = (model, selectedOperation) => JSON.stringify([model, selectedOperation])
+const validationKey = (model, refiner, selectedOperation) => JSON.stringify([model, refiner || '', selectedOperation])
 const validationPairs = validated => [...validated].map(key => {
-  const [model, operation] = JSON.parse(key)
-  return { model, operation }
+  const [model, refiner, operation] = JSON.parse(key)
+  return { model, operation, ...(refiner ? { refiner } : {}) }
 })
 function size(width, height) {
   if (!SDXL_SIZES.some(([w, h]) => width === w && height === h)) throw new Error('Choose a supported SDXL output size.')
@@ -50,12 +53,24 @@ function size(width, height) {
 }
 function parameters(p, selectedOperation = 'inpaint', allowedModels = [MODEL]) {
   selectedOperation = operation(selectedOperation)
-  if (!p || typeof p.prompt !== 'string' || !p.prompt.trim() || p.prompt.length > 4000 || typeof p.negative !== 'string' || p.negative.length > 4000 || !Number.isSafeInteger(p.seed) || p.seed < 0 || p.seed > 4294967295 || p.randomizeSeed !== undefined && typeof p.randomizeSeed !== 'boolean' || !Number.isInteger(p.steps) || p.steps < 1 || p.steps > 50 || !Number.isFinite(p.cfg) || p.cfg < 1 || p.cfg > 15 || p.denoise !== 1) throw new Error('Invalid SDXL parameters. This workflow requires full denoising.')
+  if (!p || typeof p.prompt !== 'string' || !p.prompt.trim() || p.prompt.length > 4000 || typeof p.negative !== 'string' || p.negative.length > 4000 || !Number.isSafeInteger(p.seed) || p.seed < 0 || p.seed > 4294967295 || p.randomizeSeed !== undefined && typeof p.randomizeSeed !== 'boolean' || p.stylePreset !== undefined && !STYLE_PRESETS.includes(p.stylePreset) || p.refinerEnabled !== undefined && typeof p.refinerEnabled !== 'boolean' || !Number.isInteger(p.steps) || p.steps < 1 || p.steps > 50 || !Number.isFinite(p.cfg) || p.cfg < 1 || p.cfg > 15 || p.denoise !== 1) throw new Error('Invalid SDXL parameters. This workflow requires full denoising.')
   const model = checkpoint(p.model)
   if (!Array.isArray(allowedModels) || !allowedModels.includes(model)) throw new Error('Choose a checkpoint reported by this ComfyUI connection.')
-  const result = { prompt: p.prompt, negative: p.negative, model, seed: p.seed, steps: p.steps, cfg: p.cfg, denoise: p.denoise }
+  let refiner = ''
+  if (p.refinerEnabled !== false) refiner = p.refiner ? checkpoint(p.refiner) : allowedModels.includes(REFINER) ? REFINER : ''
+  if (refiner && (!allowedModels.includes(refiner) || refiner === model || p.steps < 2)) throw new Error('Choose a separate SDXL refiner reported by this ComfyUI connection and use at least two steps.')
+  const result = { prompt: p.prompt, negative: p.negative, stylePreset: p.stylePreset || 'source-match', model, refiner, refinerEnabled: Boolean(refiner), seed: p.seed, steps: p.steps, cfg: p.cfg, denoise: p.denoise }
   if (selectedOperation === 'text-to-image') Object.assign(result, size(p.width, p.height))
   return result
+}
+function conditionPrompts(p, selectedOperation = 'inpaint') {
+  selectedOperation = operation(selectedOperation)
+  if (p.stylePreset === 'raw') return { prompt: p.prompt, negative: p.negative, preset: 'raw' }
+  const positive = selectedOperation === 'text-to-image'
+    ? 'coherent composition, accurate perspective, physically plausible lighting, highly detailed, sharp focus, polished image'
+    : 'seamlessly integrated into the existing scene, coherent scale and perspective, matching ambient lighting and color, physically plausible shadows and reflections, detailed, clean natural edges'
+  const negative = 'low quality, blurry, distorted geometry, malformed object, duplicate object, pasted-on appearance, halo, hard border, frame, vignette, text, watermark'
+  return { prompt: p.prompt + ', ' + positive, negative: [p.negative.trim(), negative].filter(Boolean).join(', '), preset: 'source-match' }
 }
 function png(value, width = 1024, height = 1024) {
   if (!(value instanceof ArrayBuffer) && !ArrayBuffer.isView(value)) throw new Error('Expected a PNG buffer.')
@@ -65,10 +80,11 @@ function png(value, width = 1024, height = 1024) {
 }
 function workflow(selectedOperation, p, image, mask, prefix) {
   selectedOperation = operation(selectedOperation)
+  const conditioned = conditionPrompts(p, selectedOperation)
   const graph = {
     '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: p.model } },
-    '2': { class_type: 'CLIPTextEncode', inputs: { text: p.prompt, clip: ['1', 1] } },
-    '3': { class_type: 'CLIPTextEncode', inputs: { text: p.negative, clip: ['1', 1] } },
+    '2': { class_type: 'CLIPTextEncode', inputs: { text: conditioned.prompt, clip: ['1', 1] } },
+    '3': { class_type: 'CLIPTextEncode', inputs: { text: conditioned.negative, clip: ['1', 1] } },
     '7': { class_type: 'KSampler', inputs: { model: ['1', 0], positive: ['2', 0], negative: ['3', 0], seed: p.seed, steps: p.steps, cfg: p.cfg, denoise: p.denoise, sampler_name: 'dpmpp_2m_sde', scheduler: 'karras' } },
     '8': { class_type: 'VAEDecode', inputs: { samples: ['7', 0], vae: ['1', 2] } },
     '9': { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: prefix } },
@@ -82,6 +98,15 @@ function workflow(selectedOperation, p, image, mask, prefix) {
     graph['6'] = { class_type: 'VAEEncodeForInpaint', inputs: { pixels: ['4', 0], vae: ['1', 2], mask: ['5', 0], grow_mask_by: 6 } }
   }
   graph['7'].inputs.latent_image = ['6', 0]
+  if (p.refiner) {
+    const split = Math.max(1, Math.min(p.steps - 1, Math.round(p.steps * .8)))
+    graph['7'] = { class_type: 'KSamplerAdvanced', inputs: { model: ['1', 0], positive: ['2', 0], negative: ['3', 0], latent_image: ['6', 0], add_noise: 'enable', noise_seed: p.seed, steps: p.steps, cfg: p.cfg, sampler_name: 'dpmpp_2m_sde', scheduler: 'karras', start_at_step: 0, end_at_step: split, return_with_leftover_noise: 'enable' } }
+    graph['10'] = { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: p.refiner } }
+    graph['11'] = { class_type: 'CLIPTextEncode', inputs: { text: conditioned.prompt, clip: ['10', 1] } }
+    graph['12'] = { class_type: 'CLIPTextEncode', inputs: { text: conditioned.negative, clip: ['10', 1] } }
+    graph['13'] = { class_type: 'KSamplerAdvanced', inputs: { model: ['10', 0], positive: ['11', 0], negative: ['12', 0], latent_image: ['7', 0], add_noise: 'disable', noise_seed: p.seed, steps: p.steps, cfg: p.cfg, sampler_name: 'dpmpp_2m_sde', scheduler: 'karras', start_at_step: split, end_at_step: p.steps, return_with_leftover_noise: 'disable' } }
+    graph['8'].inputs.samples = ['13', 0]
+  }
   return graph
 }
 function request(port, route, { method = 'GET', body, type = 'application/json', max = 1024 ** 2, timeout = 15000, signal } = {}) {
@@ -118,10 +143,12 @@ function createSdxlService({ notify = () => {}, pollMs = 1000, jobTimeout = 30 *
         if (!node || node.python_module !== 'nodes' || !inputs.every(key => key in (node.input?.required || {}))) throw new Error('Missing or modified ComfyUI standard node: ' + name)
         nodes[name] = node
       }
-      if (!nodes.LoadImageMask.input.required.channel?.[0]?.includes('red') || !nodes.KSampler.input.required.sampler_name?.[0]?.includes('dpmpp_2m_sde') || !nodes.KSampler.input.required.scheduler?.[0]?.includes('karras')) throw new Error('ComfyUI does not support the pinned workflows.')
+      if (!nodes.LoadImageMask.input.required.channel?.[0]?.includes('red') || !nodes.KSampler.input.required.sampler_name?.[0]?.includes('dpmpp_2m_sde') || !nodes.KSampler.input.required.scheduler?.[0]?.includes('karras') || !nodes.KSamplerAdvanced.input.required.sampler_name?.[0]?.includes('dpmpp_2m_sde') || !nodes.KSamplerAdvanced.input.required.scheduler?.[0]?.includes('karras')) throw new Error('ComfyUI does not support the pinned workflows.')
       const models = modelList(nodes.CheckpointLoaderSimple.input.required.ckpt_name?.[0])
-      const defaultModel = models.includes(MODEL) ? MODEL : models[0] || null
-      connection = { port: config.port, version: stats.system.comfyui_version, models, defaultModel, modelAvailable: models.length > 0 }
+      const baseModels = models.filter(model => model !== REFINER)
+      const defaultModel = baseModels.includes(MODEL) ? MODEL : baseModels[0] || null
+      const defaultRefiner = models.includes(REFINER) ? REFINER : null
+      connection = { port: config.port, version: stats.system.comfyui_version, models, defaultModel, defaultRefiner, modelAvailable: baseModels.length > 0 }
       return { ...connection, model: defaultModel, workflows: WORKFLOWS, operations: [], validatedPairs: [], validationRequired: true, cancelMode: 'stop-accepting-results' }
     } finally { connecting = false }
   }
@@ -139,7 +166,7 @@ function createSdxlService({ notify = () => {}, pollMs = 1000, jobTimeout = 30 *
     const selectedOperation = operation(payload?.operation)
     if (!Number.isSafeInteger(payload.revision) || payload.revision < 0) throw new Error('Invalid Studio revision.')
     const p = parameters(payload.parameters, selectedOperation, connection.models)
-    const key = validationKey(p.model, selectedOperation)
+    const key = validationKey(p.model, p.refiner, selectedOperation)
     if (!validated.has(key) && payload.validate !== true) throw new Error('Validate this model and workflow first.')
     const settings = { ...connection }, controller = new AbortController()
     const job = { id: payload.id, canceled: false, controller }; active = job
@@ -156,6 +183,7 @@ function createSdxlService({ notify = () => {}, pollMs = 1000, jobTimeout = 30 *
         if (job.canceled) throw new Error('Canceled before submission.')
       } else update('preparing', 'Preparing the SDXL text-to-image workflow…')
       const graph = workflow(selectedOperation, p, imageName, maskName, prefix)
+      const conditioning = conditionPrompts(p, selectedOperation)
       const queued = await json(settings.port, '/prompt', { method: 'POST', signal: controller.signal, body: Buffer.from(JSON.stringify({ prompt: graph, client_id: clientId })) })
       requestId(queued.prompt_id)
       if (queued.error || Object.keys(queued.node_errors || {}).length) throw new Error('ComfyUI rejected the SDXL workflow.')
@@ -180,7 +208,7 @@ function createSdxlService({ notify = () => {}, pollMs = 1000, jobTimeout = 30 *
             if (job.canceled) return { canceled: true, backendFinished: true }
             validated.add(key)
             return { bytes: new Uint8Array(bytes), provider: 'comfyui', providerVersion: settings.version, model: p.model, modelSha256: null,
-              operation: selectedOperation, workflow: WORKFLOWS[selectedOperation], workflowSha256: createHash('sha256').update(JSON.stringify(graph)).digest('hex'),
+              operation: selectedOperation, refiner: p.refiner || null, conditioning, workflow: WORKFLOWS[selectedOperation], workflowSha256: createHash('sha256').update(JSON.stringify(graph)).digest('hex'),
               validatedPairs: validationPairs(validated), backendJobId: job.backendId, parameters: p, elapsedMs: Date.now() - started }
           }
           update('running', 'ComfyUI is processing this SDXL job…')
@@ -205,4 +233,4 @@ function createSdxlService({ notify = () => {}, pollMs = 1000, jobTimeout = 30 *
   }
   return { connect, run, cancel, disconnect, dispose, get busy() { return Boolean(active || connecting) } }
 }
-module.exports = { createSdxlService, workflow, parameters, png, request, operation, checkpoint, modelList, size, MODEL, OPERATIONS, WORKFLOWS, SDXL_SIZES, NODE_INPUTS }
+module.exports = { createSdxlService, workflow, parameters, conditionPrompts, png, request, operation, checkpoint, modelList, size, MODEL, REFINER, OPERATIONS, STYLE_PRESETS, WORKFLOWS, SDXL_SIZES, NODE_INPUTS }

@@ -88,8 +88,9 @@ export async function sdxlChecks(check) {
     assert(imported.state.id !== entry.state.id && imported.artifacts.size === 2, 'import reused session identity')
     const restored = fresh(); await restored.restore(entry)
     assert(restored.document.parameters.prompt === 'A quiet garden' && restored.canRedo, 'session not restored')
-    const legacy = structuredClone(entry.state); delete legacy.parameters.randomizeSeed
-    assert(interruptedDocument(legacy).parameters.randomizeSeed === true, 'legacy session did not enable per-variant seeds')
+    const legacy = structuredClone(entry.state); delete legacy.parameters.randomizeSeed; delete legacy.parameters.stylePreset; delete legacy.parameters.refinerEnabled; delete legacy.parameters.refiner
+    const upgraded = interruptedDocument(legacy)
+    assert(upgraded.parameters.randomizeSeed === true && upgraded.parameters.stylePreset === 'source-match' && upgraded.parameters.refinerEnabled === true && upgraded.parameters.refiner === '', 'legacy session did not receive quality defaults')
     restored.redo(); await restored.flush(); assert(bytes(restored.mask()).every((n, i) => i % 4 !== 3 || !n), 'redo changed after restart')
     const damaged = new Uint8Array(await project.arrayBuffer()); damaged[damaged.length - 1] ^= 1
     await expectError(() => readProject(new Blob([damaged])))
@@ -128,13 +129,14 @@ export async function sdxlChecks(check) {
     const output = new Uint8Array(await (await canvasToBlob(generated, 'png')).arrayBuffer()), nativeApi = window.desktopApi, seeds = []
     window.desktopApi = { onAiStudioProgress: () => () => {}, aiStudioRun: async payload => {
       seeds.push(payload.parameters.seed)
-      return { bytes: output, provider: 'TEST FIXTURE', providerVersion: 'test', model: payload.parameters.model, operation: payload.operation, workflow: 'seed-test-only', validatedPairs: [{ model: payload.parameters.model, operation: payload.operation }], modelSha256: null, elapsedMs: 0 }
+      return { bytes: output, provider: 'TEST FIXTURE', providerVersion: 'test', model: payload.parameters.model, refiner: payload.parameters.refiner || null, operation: payload.operation, workflow: 'seed-test-only', validatedPairs: [{ model: payload.parameters.model, refiner: payload.parameters.refiner || undefined, operation: payload.operation }], modelSha256: null, elapsedMs: 0 }
     } }
     try {
-      store.connection = { modelAvailable: true, models: [store.document.parameters.model], defaultModel: store.document.parameters.model, validatedPairs: [] }
+      store.connection = { modelAvailable: true, models: [store.document.parameters.model, 'sd_xl_refiner_1.0.safetensors'], defaultModel: store.document.parameters.model, defaultRefiner: 'sd_xl_refiner_1.0.safetensors', validatedPairs: [] }
       assert(store.document.parameters.randomizeSeed === true, 'new sessions did not default to random seeds')
       await store.run(true); await store.run()
       assert(seeds.length === 2 && seeds[0] !== seeds[1], 'two variants reused the same automatic seed')
+      assert(store.document.results[0].provenance.refiner === 'sd_xl_refiner_1.0.safetensors', 'automatic refiner was not submitted or recorded')
       assert(store.document.results[0].provenance.parameters.seed === seeds[0] && store.document.results[1].provenance.parameters.seed === seeds[1], 'automatic seeds were not recorded in provenance')
       store.document.parameters.randomizeSeed = false; store.document.parameters.seed = 123456
       await store.run(); await store.run()
