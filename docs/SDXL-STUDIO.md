@@ -1,4 +1,4 @@
-# AI Studio · SDXL v0.3
+# AI Studio · SDXL v0.4
 
 Stand: 5. September 2026. Text-to-Image, Inpainting und Outpainting besitzen getrennte lokale Workflow-Verträge; **reale SDXL-Modellabnahme und die verwaltete ComfyUI-Runtime sind noch offen**.
 
@@ -18,6 +18,8 @@ Der Adapter liest bis zu 256 relative `.safetensors`-Checkpointnamen aus dem Com
 
 Die Liste beweist nicht, dass ein Checkpoint wirklich zur SDXL-Architektur passt. Das zeigt erst ein erfolgreicher lokaler Test der gewählten Kombination; Qualität, Lizenz und Modellherkunft bleiben Eigenschaften des konkreten Community-Modells. Inpainting und Outpainting verwenden maskierte Latents, keinen besonderen Inpainting-Checkpoint. Text-to-Image verwendet ein leeres SDXL-Latent. Imejii lädt weder Modelle noch Runtime automatisch herunter.
 
+Das Basisbild wird bei Inpainting und Outpainting tatsächlich an ComfyUI übertragen. Imejii sendet einen auf 1024 × 1024 eingepassten Ausschnitt, der die Auswahl und seit v0.4 mindestens 61,8 % beider Quelldimensionen enthält. Damit erhält SDXL auch bei kleinen Masken genug Szene für Licht, Perspektive und Stil. `VAEEncodeForInpaint` ersetzt die maskierten Pixel vor der Diffusion durch seine neutrale Füllung. Der aktuelle Replace-Workflow verwendet deshalb zwingend Denoise `1.0`; partielle Werte könnten diese Füllung als graue Fläche stehen lassen. Detailkorrektur mit erhaltener maskierter Bildinformation benötigt künftig einen getrennten Workflow.
+
 ## Quellen und Backend-Entscheidung
 
 Für den ersten Implementierungsschnitt wurde ComfyUI als **vorläufiger Adapter** gewählt: Seine dokumentierten Server-Routen und Standard-Nodes erlauben einen kleinen Broker ohne Prozessinstallation, Shell oder Custom-Node-Import. Die API beschreibt u. a. Upload, Prompt-Queue, History und Bildabruf. [ComfyUI-Routen](https://docs.comfy.org/development/comfyui-server/comms_routes), [Server-Implementierung](https://github.com/Comfy-Org/ComfyUI/blob/master/server.py).
@@ -32,16 +34,18 @@ Die externe Quellenprüfung erfolgte am 5. September 2026. Sie ersetzt keinen La
 
 Implementiert in `electron/sdxl.cjs`:
 
-- `imejii-sdxl-base-text-to-image-v1`: `CheckpointLoaderSimple → CLIPTextEncode → EmptyLatentImage → KSampler → VAEDecode → SaveImage`.
-- `imejii-sdxl-base-masked-latent-v1`: Bild und rote Graustufenmaske → `VAEEncodeForInpaint(grow_mask_by=6)` → `KSampler → VAEDecode → SaveImage`.
-- `imejii-sdxl-base-outpaint-v1`: derselbe kontrollierte ComfyUI-Graph wie der Maskenlauf, aber mit eigener Imejii-Vorbereitung, größerer Kompositionsfläche, Randmaske, Platzierung und eigener Workflow-Herkunft.
+- `imejii-sdxl-base-text-to-image-v2`: `CheckpointLoaderSimple → CLIPTextEncode → EmptyLatentImage → KSampler → VAEDecode → SaveImage`.
+- `imejii-sdxl-base-masked-latent-v2`: Bild und rote Graustufenmaske → `VAEEncodeForInpaint(grow_mask_by=6)` → `KSampler → VAEDecode → SaveImage`.
+- `imejii-sdxl-base-outpaint-v2`: derselbe kontrollierte ComfyUI-Graph wie der Maskenlauf, aber mit eigener Imejii-Vorbereitung, größerer Kompositionsfläche, Randmaske, Platzierung und eigener Workflow-Herkunft.
+
+Alle drei v2-Graphen verwenden `DPM++ 2M SDE`, Karras-Schedule und vollständiges Denoising. Neue Sitzungen beginnen mit 30 Schritten. Ein Wechsel des Checkpoints oder auf einen v2-Workflow verlangt erneut den lokalen Testlauf.
 
 Text-to-Image erlaubt ausschließlich die neun im Plugin festgelegten SDXL-Seitenverhältnisse von 1024 × 1024 bis 1536 × 640 beziehungsweise Hochformat. Der Renderer kann nur einen exakten Eintrag aus der zuvor vom Broker gefilterten ComfyUI-Liste wählen; Workflow und Node-Graph bleiben fest im Main-Prozess.
 
 Der Standard-Node `LoadImageMask` liest bei `red` die Graustufe direkt. Sein Alpha-Pfad hätte eine andere Konvention. `VAEEncodeForInpaint` erweitert die Inferenzmaske im Modellraum; die Kompositionsmaske wird dadurch nicht erweitert. [Standard-Nodes](https://github.com/Comfy-Org/ComfyUI/blob/master/nodes.py).
 
 - Quellen und Outpainting-Ergebnisse: höchstens 24 MP / 16.384 px, Maskenarbeit höchstens 2048 px lange Kante. Je Bildseite können höchstens 2048 px ergänzt werden; der Überlappungsbereich ist auf 256 px begrenzt.
-- Kontext: Auswahl-Bounds im Maskenraum, Projektion in den Quellraum, Kontextkanten mindestens 128 px bzw. 1,8-fache Auswahlgröße; auf das Quellrechteck begrenzt.
+- Kontext: Auswahl-Bounds im Maskenraum, Projektion in den Quellraum, Kontextbreite und -höhe jeweils mindestens 61,8 % der Quelle, 128 px beziehungsweise 1,8-fache Auswahlgröße; auf das Quellrechteck begrenzt.
 - Inferenz: 1024 × 1024, proportional eingepasster Kontext, zentriertes Padding mit wiederholten Bildrandpixeln. Padding ist schwarz in der Inferenzmaske. Transparente Quellpixel werden nur für die Inferenz vor Weiß gesetzt.
 - Rückprojektion: Padding entfernen, Modellbild auf den ursprünglichen Kontext skalieren, RGB mit der unveränderten weichen Kompositionsmaske mischen. Alle Quellalpha-Werte bleiben erhalten; bei Maskenalpha null bleiben sämtliche Quellbytes unverändert.
 - Motiv-/Hintergrundauswahl hat dieselbe Polarität wie der bestehende Export. Es gibt keine 65-%-Beschränkung aus LaMa.
@@ -81,4 +85,4 @@ npm run test:studio
 
 `tests/sdxl.test.cjs` prüft die drei festen Broker-Graphen, die gefilterte Community-Modellliste und die Freigabe je Modell-/Workflow-Paar mit einem lokalen Protokollserver. `tests/sdxl-checks.js` prüft echte Canvas-/IndexedDB-Verarbeitung einschließlich quellfreier Textgenerierung und Outpainting-Rückprojektion. `tests/sdxl-desktop.cjs` führt die Produktions-App mit einem ausdrücklich als `TEST-FIXTURE-NO-MODEL` gekennzeichneten Testserver aus. **Dessen Bilder sind keine generierten SDXL-Ergebnisse.** Der Testserver gehört nur zu `tests/` und wird nicht paketiert.
 
-Noch nötig: verwaltete und gepinnte ComfyUI-Runtime, konkrete geprüfte Gewichte, Testfälle für Text-to-Image, Person/Produkt/Haare/Glas, alle Randrichtungen und verschiedene Seitenverhältnisse, echte Inpainting-/Outpainting-Bildqualität, Versionen/Hashes, OOM/Backend-Neustart und Hardwareverbrauch. Danach gepackte Windows-App mit realem Modell und separat eine saubere Windows-Installation abnehmen. Keine allgemeine SDXL-Freigabe aus den Fixture-Tests ableiten.
+Noch nötig: verwaltete und gepinnte ComfyUI-Runtime, konkrete geprüfte Gewichte, ein optionaler erweiterter Inpainting-Pfad mit Fooocus-Inpaint-Patch, Testfälle für Text-to-Image, Person/Produkt/Haare/Glas, alle Randrichtungen und verschiedene Seitenverhältnisse, echte Inpainting-/Outpainting-Bildqualität, Versionen/Hashes, OOM/Backend-Neustart und Hardwareverbrauch. Danach gepackte Windows-App mit realem Modell und separat eine saubere Windows-Installation abnehmen. Keine allgemeine SDXL-Freigabe aus den Fixture-Tests ableiten.

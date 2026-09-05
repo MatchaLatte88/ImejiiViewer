@@ -158,7 +158,7 @@ onBeforeUnmount(() => {
         </div>
         <SliderControl v-model="brush" label="Brush size" :min="1" :max="50" unit="%" :disabled="!editable" />
         <label class="check"><input v-model="showMask" type="checkbox"> Show selection</label>
-        <p class="small"><i class="swatch" /> Coral marks the area to repaint. Hold Space to compare.</p>
+        <p class="small"><i class="swatch" /> Coral marks the area to repaint. Keep it close to the desired object with a little margin; the complete marked area is regenerated. Hold Space to compare.</p>
         <AppButton variant="ghost" :disabled="!editable || studio.drawing" @click="act(() => studio.clearMask())">Clear selection</AppButton>
         <AppButton variant="ghost" :disabled="!editable || studio.drawing" @click="maskInput.click()">Import mask PNG</AppButton>
         <input ref="maskInput" type="file" accept="image/png" class="sr-only" aria-label="Import grayscale mask" @change="act(() => studio.importMask($event.target.files[0])); $event.target.value = ''">
@@ -225,8 +225,8 @@ onBeforeUnmount(() => {
           <label class="field">Prompt<textarea v-model="studio.document.parameters.prompt" maxlength="4000" rows="5" placeholder="A ceramic vase with wildflowers, soft window light, natural shadows…" /></label>
           <label class="field">Negative prompt <span class="optional">optional</span><textarea v-model="studio.document.parameters.negative" maxlength="4000" rows="2" placeholder="Blurry, distorted, text…" /></label>
           <div class="model-label"><label class="field">SDXL checkpoint<select v-model="studio.document.parameters.model" :disabled="studio.busy || !studio.connection?.modelAvailable"><option v-for="model in modelOptions" :key="model" :value="model">{{ modelDisplay(model) }}</option></select></label><small>From ComfyUI/models/checkpoints · {{ operationCopy.title }} uses a pinned local workflow. Reconnect after adding a model.</small></div>
-          <SliderControl v-if="studio.operation !== 'text-to-image'" v-model="studio.document.parameters.denoise" :label="studio.operation === 'outpaint' ? 'Continuation strength' : 'Replacement strength'" :min=".1" :max="1" :step=".05" />
-          <details class="advanced"><summary>Advanced settings</summary><label class="field">Seed<input v-model.number="studio.document.parameters.seed" type="number" min="0" max="4294967295" step="1"></label><button type="button" class="random-seed" @click="randomSeed">New random seed</button><SliderControl v-model="studio.document.parameters.steps" label="Steps" :min="1" :max="50" /><SliderControl v-model="studio.document.parameters.cfg" label="Prompt guidance" :min="1" :max="15" :step=".5" /><p class="small">Euler · Normal schedule<br>Context crop with edge padding. Alpha is preserved.</p></details>
+          <p v-if="studio.operation !== 'text-to-image'" class="small">Full replacement strength is fixed at 1.0 so the neutral masked latent cannot remain as a gray patch.</p>
+          <details class="advanced"><summary>Advanced settings</summary><label class="field">Seed<input v-model.number="studio.document.parameters.seed" type="number" min="0" max="4294967295" step="1"></label><button type="button" class="random-seed" @click="randomSeed">New random seed</button><SliderControl v-model="studio.document.parameters.steps" label="Steps" :min="1" :max="50" /><SliderControl v-model="studio.document.parameters.cfg" label="Prompt guidance" :min="1" :max="15" :step=".5" /><p class="small">DPM++ 2M SDE · Karras<br>Scene-aware context crop with edge padding. Alpha is preserved.</p></details>
         </template>
         <p v-else class="small">{{ studio.operation === 'text-to-image' ? 'Choose Text again to create a new prompt session.' : 'Open a source image to begin.' }}</p>
       </fieldset>

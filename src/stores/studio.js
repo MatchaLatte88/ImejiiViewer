@@ -187,6 +187,9 @@ export const useStudioStore = defineStore('studio', () => {
     const doc = document.value
     if (doc.results.length >= 8) throw new Error('Eight variants reached. Remove an unwanted variant first.')
     const selectedOperation = operation.value
+    // The current masked-latent workflow replaces selected pixels with the VAE's
+    // neutral fill. Partial denoising would preserve that fill as a gray patch.
+    if (doc.parameters.denoise !== 1) doc.parameters.denoise = 1
     const p = normalizeParameters(JSON.parse(JSON.stringify(doc.parameters)))
     validateParameters(p)
     if (!p.prompt.trim()) throw new Error(selectedOperation === 'text-to-image' ? 'Describe the image to generate.' : selectedOperation === 'outpaint' ? 'Describe what should continue beyond the image.' : 'Describe what should appear in the selected area.')
@@ -226,7 +229,7 @@ export const useStudioStore = defineStore('studio', () => {
       const canvas = selectedOperation === 'text-to-image' ? copyCanvas(generated) : composeInpaint(inputSource, inputMask, generated, prepared.geometry)
       const hash = await artifact(canvas)
       if (job.state === 'canceled' || document.value.id !== doc.id) return
-      const provenance = { operation: selectedOperation, version: '0.3.0', documentId: doc.id, revision, jobId: id, sourceSha256: doc.source || null, sourceName: doc.source ? doc.name : null, maskSha256,
+      const provenance = { operation: selectedOperation, version: '0.4.0', documentId: doc.id, revision, jobId: id, sourceSha256: doc.source || null, sourceName: doc.source ? doc.name : null, maskSha256,
         outputWidth: canvas.width, outputHeight: canvas.height, geometry: prepared?.geometry || null, outpaint: prepared?.settings || null, placement: prepared?.placement || null,
         parameters: p, provider: result.provider, providerVersion: result.providerVersion, model: result.model, modelSha256: result.modelSha256,
         workflow: result.workflow, workflowSha256: result.workflowSha256, backendJobId: result.backendJobId, elapsedMs: result.elapsedMs, createdAt: new Date().toISOString() }

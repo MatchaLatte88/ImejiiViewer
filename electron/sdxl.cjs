@@ -7,9 +7,9 @@ const { requestId } = require('./cutout.cjs')
 const MODEL = 'sd_xl_base_1.0.safetensors'
 const OPERATIONS = Object.freeze(['text-to-image', 'inpaint', 'outpaint'])
 const WORKFLOWS = Object.freeze({
-  'text-to-image': 'imejii-sdxl-base-text-to-image-v1',
-  inpaint: 'imejii-sdxl-base-masked-latent-v1',
-  outpaint: 'imejii-sdxl-base-outpaint-v1',
+  'text-to-image': 'imejii-sdxl-base-text-to-image-v2',
+  inpaint: 'imejii-sdxl-base-masked-latent-v2',
+  outpaint: 'imejii-sdxl-base-outpaint-v2',
 })
 const SDXL_SIZES = Object.freeze([[1024, 1024], [1152, 896], [896, 1152], [1216, 832], [832, 1216], [1344, 768], [768, 1344], [1536, 640], [640, 1536]])
 const NODE_INPUTS = {
@@ -50,7 +50,7 @@ function size(width, height) {
 }
 function parameters(p, selectedOperation = 'inpaint', allowedModels = [MODEL]) {
   selectedOperation = operation(selectedOperation)
-  if (!p || typeof p.prompt !== 'string' || !p.prompt.trim() || p.prompt.length > 4000 || typeof p.negative !== 'string' || p.negative.length > 4000 || !Number.isSafeInteger(p.seed) || p.seed < 0 || p.seed > 4294967295 || !Number.isInteger(p.steps) || p.steps < 1 || p.steps > 50 || !Number.isFinite(p.cfg) || p.cfg < 1 || p.cfg > 15 || !Number.isFinite(p.denoise) || p.denoise < .1 || p.denoise > 1) throw new Error('Invalid SDXL parameters.')
+  if (!p || typeof p.prompt !== 'string' || !p.prompt.trim() || p.prompt.length > 4000 || typeof p.negative !== 'string' || p.negative.length > 4000 || !Number.isSafeInteger(p.seed) || p.seed < 0 || p.seed > 4294967295 || !Number.isInteger(p.steps) || p.steps < 1 || p.steps > 50 || !Number.isFinite(p.cfg) || p.cfg < 1 || p.cfg > 15 || p.denoise !== 1) throw new Error('Invalid SDXL parameters. This workflow requires full denoising.')
   const model = checkpoint(p.model)
   if (!Array.isArray(allowedModels) || !allowedModels.includes(model)) throw new Error('Choose a checkpoint reported by this ComfyUI connection.')
   const result = { prompt: p.prompt, negative: p.negative, model, seed: p.seed, steps: p.steps, cfg: p.cfg, denoise: p.denoise }
@@ -69,7 +69,7 @@ function workflow(selectedOperation, p, image, mask, prefix) {
     '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: p.model } },
     '2': { class_type: 'CLIPTextEncode', inputs: { text: p.prompt, clip: ['1', 1] } },
     '3': { class_type: 'CLIPTextEncode', inputs: { text: p.negative, clip: ['1', 1] } },
-    '7': { class_type: 'KSampler', inputs: { model: ['1', 0], positive: ['2', 0], negative: ['3', 0], seed: p.seed, steps: p.steps, cfg: p.cfg, denoise: p.denoise, sampler_name: 'euler', scheduler: 'normal' } },
+    '7': { class_type: 'KSampler', inputs: { model: ['1', 0], positive: ['2', 0], negative: ['3', 0], seed: p.seed, steps: p.steps, cfg: p.cfg, denoise: p.denoise, sampler_name: 'dpmpp_2m_sde', scheduler: 'karras' } },
     '8': { class_type: 'VAEDecode', inputs: { samples: ['7', 0], vae: ['1', 2] } },
     '9': { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: prefix } },
   }
@@ -118,7 +118,7 @@ function createSdxlService({ notify = () => {}, pollMs = 1000, jobTimeout = 30 *
         if (!node || node.python_module !== 'nodes' || !inputs.every(key => key in (node.input?.required || {}))) throw new Error('Missing or modified ComfyUI standard node: ' + name)
         nodes[name] = node
       }
-      if (!nodes.LoadImageMask.input.required.channel?.[0]?.includes('red') || !nodes.KSampler.input.required.sampler_name?.[0]?.includes('euler') || !nodes.KSampler.input.required.scheduler?.[0]?.includes('normal')) throw new Error('ComfyUI does not support the pinned workflows.')
+      if (!nodes.LoadImageMask.input.required.channel?.[0]?.includes('red') || !nodes.KSampler.input.required.sampler_name?.[0]?.includes('dpmpp_2m_sde') || !nodes.KSampler.input.required.scheduler?.[0]?.includes('karras')) throw new Error('ComfyUI does not support the pinned workflows.')
       const models = modelList(nodes.CheckpointLoaderSimple.input.required.ckpt_name?.[0])
       const defaultModel = models.includes(MODEL) ? MODEL : models[0] || null
       connection = { port: config.port, version: stats.system.comfyui_version, models, defaultModel, modelAvailable: models.length > 0 }

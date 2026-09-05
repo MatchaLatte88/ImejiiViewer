@@ -5,7 +5,7 @@ import { createCanvas, canvasToImageData } from '../src/lib/transform.js'
 import { canvasToBlob } from '../src/lib/exportImage.js'
 import { decodePhoto } from '../src/lib/photoLoader.js'
 import { readPhotoMetadata } from '../src/lib/photoMetadata.js'
-import { prepareInpaint, prepareOutpaint, composeInpaint, alphaFromGrayscale } from '../src/plugins/sdxl-studio/pipeline.js'
+import { prepareInpaint, prepareOutpaint, composeInpaint, alphaFromGrayscale, INPAINT_CONTEXT } from '../src/plugins/sdxl-studio/pipeline.js'
 import { grayscaleMask } from '../src/plugins/mask-transfer.js'
 import { loadDraft, deleteDraft, readProject, studioProjectBlob, saveStudioDraft, sourceFingerprint } from '../src/lib/drafts.js'
 import { interruptedDocument } from '../src/lib/studioDocument.js'
@@ -54,6 +54,13 @@ export async function sdxlChecks(check) {
       if (fit.x || fit.y) assert(bytes(modelMask)[0] === 0, 'padding is selected')
     }
     await expectError(() => prepareInpaint(source(), createCanvas(256, 128)))
+  })
+  await check('SDXL gives small selections enough source context to preserve the scene', async () => {
+    const s = source(1000, 600), m = createCanvas(1000, 600)
+    m.getContext('2d').fillRect(480, 280, 20, 20)
+    const prepared = await prepareInpaint(s, m), crop = prepared.geometry.crop
+    assert(crop.width >= Math.ceil(s.width * INPAINT_CONTEXT) && crop.height >= Math.ceil(s.height * INPAINT_CONTEXT), 'small selection hid most scene context')
+    assert(crop.x <= 480 && crop.y <= 280 && crop.x + crop.width >= 500 && crop.y + crop.height >= 300, 'context crop lost the selection')
   })
   await check('SDXL outpainting expands chosen edges and keeps the protected source interior byte-identical', async () => {
     const original = source(128, 64), prepared = await prepareOutpaint(original, { left: 64, right: 128, top: 32, bottom: 0, overlap: 16 })

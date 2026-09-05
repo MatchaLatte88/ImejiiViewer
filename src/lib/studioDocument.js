@@ -6,7 +6,7 @@ export const HASH = /^[a-f0-9]{64}$/
 export const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value)
 export const STUDIO_OPERATIONS = Object.freeze(['text-to-image', 'inpaint', 'outpaint'])
 export const SDXL_SIZES = Object.freeze([[1024, 1024], [1152, 896], [896, 1152], [1216, 832], [832, 1216], [1344, 768], [768, 1344], [1536, 640], [640, 1536]])
-export const defaultParameters = () => ({ prompt: '', negative: '', seed: 0, steps: 25, cfg: 7, denoise: 1, model: 'sd_xl_base_1.0.safetensors', width: 1024, height: 1024,
+export const defaultParameters = () => ({ prompt: '', negative: '', seed: 0, steps: 30, cfg: 7, denoise: 1, model: 'sd_xl_base_1.0.safetensors', width: 1024, height: 1024,
   outpaint: { left: 256, right: 256, top: 0, bottom: 0, overlap: 64 } })
 export function validateCheckpointName(value) {
   if (typeof value !== 'string' || !value || value.length > 240 || [...value].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) || /^[a-z]:/i.test(value) || /^[\\/]/.test(value) || !value.toLowerCase().endsWith('.safetensors')) throw new Error('Choose a safe SDXL .safetensors checkpoint from ComfyUI.')

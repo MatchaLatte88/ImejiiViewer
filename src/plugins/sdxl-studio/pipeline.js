@@ -1,8 +1,27 @@
 import { createCanvas, canvasToImageData } from '../../lib/transform.js'
 import { canvasToBlob } from '../../lib/exportImage.js'
 import { dimensions } from '../../lib/studioDocument.js'
-import { maskBounds, contextRegion, compositePixels } from '../ai-remove/mask.js'
+import { maskBounds, clamp, compositePixels } from '../ai-remove/mask.js'
 import { grayscaleMask } from '../mask-transfer.js'
+
+export const INPAINT_CONTEXT = .618
+
+export function inpaintContextRegion(bounds, maskWidth, maskHeight, width, height, context = INPAINT_CONTEXT) {
+  if (!bounds || !Number.isFinite(context) || context < 0 || context > 1) throw new Error('Invalid SDXL inpainting context.')
+  const x = bounds.x / maskWidth * width, y = bounds.y / maskHeight * height
+  const w = bounds.width / maskWidth * width, h = bounds.height / maskHeight * height
+  // Fooocus' default respective field expands small edits until the crop contains
+  // roughly 61.8% of both source dimensions. The previous mask-relative square
+  // often showed SDXL only sky or wall and hid the scene that establishes style.
+  const cropWidth = Math.min(width, Math.ceil(Math.max(128, w * 1.8, width * context)))
+  const cropHeight = Math.min(height, Math.ceil(Math.max(128, h * 1.8, height * context)))
+  return {
+    x: clamp(Math.floor(x + w / 2 - cropWidth / 2), 0, width - cropWidth),
+    y: clamp(Math.floor(y + h / 2 - cropHeight / 2), 0, height - cropHeight),
+    width: cropWidth,
+    height: cropHeight,
+  }
+}
 
 export function copyCanvas(source) {
   dimensions(source.width, source.height)
@@ -34,7 +53,7 @@ export async function prepareInpaint(source, mask) {
   dimensions(source.width, source.height)
   const bounds = maskBounds(canvasToImageData(mask).data, mask.width, mask.height)
   if (!bounds) throw new Error('Paint a selection before running inpainting.')
-  const crop = contextRegion(bounds, mask.width, mask.height, source.width, source.height)
+  const crop = inpaintContextRegion(bounds, mask.width, mask.height, source.width, source.height)
   // Fixed square model canvas. Aspect ratio is retained; edge padding is removed
   // before inverse projection. Full-background masks are allowed.
   const scale = 1024 / Math.max(crop.width, crop.height)
@@ -51,7 +70,7 @@ export async function prepareInpaint(source, mask) {
   mctx.fillStyle = '#000'; mctx.fillRect(0, 0, 1024, 1024)
   mctx.drawImage(fullMask, crop.x, crop.y, crop.width, crop.height, x, y, width, height)
   const [imageBlob, maskBlob] = await Promise.all([canvasToBlob(image, 'png'), canvasToBlob(inference, 'png')])
-  return { image: await imageBlob.arrayBuffer(), mask: await maskBlob.arrayBuffer(), geometry: { version: 1, crop, fit: { x, y, width, height }, input: 1024, sourceWidth: source.width, sourceHeight: source.height } }
+  return { image: await imageBlob.arrayBuffer(), mask: await maskBlob.arrayBuffer(), geometry: { version: 2, crop, context: INPAINT_CONTEXT, fit: { x, y, width, height }, input: 1024, sourceWidth: source.width, sourceHeight: source.height } }
 }
 
 export async function prepareOutpaint(source, settings) {
